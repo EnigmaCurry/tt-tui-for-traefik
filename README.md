@@ -4,6 +4,13 @@
 )](https://crates.io/crates/tt-tui-for-traefik)
 [![Coverage](https://img.shields.io/badge/Coverage-Report-purple)](https://enigmacurry.github.io/tt-tui-for-traefik/coverage/master/)
 
+`tt` is a console dashboard TUI for
+[Traefik](https://doc.traefik.io/traefik/).
+
+This project is not affiliated with the Traefik project. Traefik is a
+trademark of [Traefik Labs](https://traefik.io/).
+
+NB: This is ALPHA software (in development).
 
 ## Install
 
