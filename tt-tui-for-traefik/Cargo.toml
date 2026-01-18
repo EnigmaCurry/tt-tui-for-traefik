@@ -1,6 +1,6 @@
 [package]
 name = "tt-tui-for-traefik"
-description = "tt-tui-for-traefik is a CLI tool"
+description = "tt-tui-for-traefik is console TUI dashboard for the Traefik API."
 version = "0.1.0"
 edition = "2024"
 repository = "https://github.com/enigmacurry/tt-tui-for-traefik"
@@ -11,15 +11,21 @@ categories = ["command-line-utilities"]
 readme = "README.md"
 documentation = "https://docs.rs/tt-tui-for-traefik"
 
+[[bin]]
+name = "tt"
+path = "src/main.rs"
+
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage,coverage_nightly)'] }
 
 [dependencies]
 clap = { version = "4.5.17", features = ["env"] }
 clap_complete = "4.5.29"
+crossterm = "0.29.0"
 dirs = "5.0.1"
 env_logger = "0.11.5"
 log = "0.4.22"
+ratatui = "0.30.0"
 
 [dev-dependencies]
 shell-words = "1.1.0"
