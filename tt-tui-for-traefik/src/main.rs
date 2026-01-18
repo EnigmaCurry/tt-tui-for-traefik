@@ -3,9 +3,12 @@ use std::env;
 use std::io::Write;
 
 mod cli;
+mod connection_monitor;
 mod prelude;
+mod settings;
 mod tui;
 
+use log::LevelFilter;
 use prelude::*;
 
 pub fn run_cli<I, S, W1, W2>(args: I, out: &mut W1, err: &mut W2) -> i32
@@ -76,6 +79,7 @@ fn init_logging(matches: &clap::ArgMatches) {
     let mut builder = env_logger::Builder::new();
     builder
         .filter_level(log::LevelFilter::from_str(&log_level).unwrap_or(log::LevelFilter::Info))
+        .filter_module("ureq", LevelFilter::Warn)
         .format_timestamp(None);
 
     // Avoid panicking in tests if a logger is already set.
