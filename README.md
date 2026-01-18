@@ -29,9 +29,9 @@ a shorter alias (`h`), as well as enable tab completion for the alias
 (`h`):
 
 ```
-### Alias tt-tui-for-traefik as h (Put this in ~/.bashrc):
-alias h=tt-tui-for-traefik
-complete -F _tt-tui-for-traefik -o bashdefault -o default h
+### Alias tt-tui-for-traefik as tt (Put this in ~/.bashrc):
+alias tt=tt-tui-for-traefik
+complete -F _tt-tui-for-traefik -o bashdefault -o default tt
 ```
 
 Completion for Zsh and/or Fish has also been implemented, but the
