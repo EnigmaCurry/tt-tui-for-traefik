@@ -1,0 +1,147 @@
+name: Rust
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+# Default token is read-only for all jobs unless overridden.
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  PROJECT_DIR: ${APP}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # stays read-only (optional explicitness)
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Update Rust stable
+        run: rustup toolchain install stable
+        working-directory: ${{ env.PROJECT_DIR }}
+
+      # Preprocess Cargo.lock to ignore version fields for cache id hashing purposes:
+      - name: Prepare Cargo.lock for caching (ignore ${APP} version)
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          PROJECT_NAME=$(grep '^name' Cargo.toml | sed 's/name = "\(.*\)"/\1/')
+          awk '/\[\[package\]\]/{p=0} /name = "'"${PROJECT_NAME}"'"/{p=1} p && /version = /{next} 1' Cargo.lock > Cargo.lock.no-version
+
+      # Cache cargo registry (source code artifacts only):
+      - name: Cache cargo registry
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('${APP}/Cargo.lock.no-version') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      # Restore target cache (third-party deps only)
+      - name: Restore third-party dependencies cache
+        uses: actions/cache@v3
+        with:
+          path: ${APP}/target
+          key: ${{ runner.os }}-cargo-deps-${{ hashFiles('${APP}/Cargo.lock.no-version') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-deps-
+
+      # Install cargo-binstall
+      - name: Install cargo-binstall
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+
+      # Install Just using cargo-binstall
+      - name: Install Just
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: cargo binstall --no-confirm just
+
+      - name: Install other dependencies listed in Justfile (bin-deps)
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: just bin-deps
+
+      ## Don't build. just let the coverage report build it.
+      # - name: Build
+      #   working-directory: ${{ env.PROJECT_DIR }}
+      #   run: just build --release
+
+      ## Don't test. just let the coverage report test it.
+      # - name: Run tests
+      #   working-directory: ${{ env.PROJECT_DIR }}
+      #   run: just test --release
+
+      - name: Run coverage report
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: just test-coverage --release && ls -lha ./target/llvm-cov/html
+
+      - name: Extract project information
+        id: project_info
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          project_name=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].name')
+          echo "PROJECT_NAME=$project_name" >> $GITHUB_ENV
+
+          # Use head ref for PRs, fallback to ref name for pushes
+          branch_name="${GITHUB_HEAD_REF:-${GITHUB_REF##*/}}"
+          echo "BRANCH_NAME=$branch_name" >> $GITHUB_ENV
+
+          commit_sha=$GITHUB_SHA
+          commit_url="https://github.com/${{ github.repository }}/commit/${commit_sha}"
+          echo "COMMIT_SHA=$commit_sha" >> $GITHUB_ENV
+          echo "COMMIT_URL=$commit_url" >> $GITHUB_ENV
+
+      - name: Inject meta information into index.html
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          project_name="$PROJECT_NAME"
+          branch_name="$BRANCH_NAME"
+          commit_sha="$COMMIT_SHA"
+          commit_url="$COMMIT_URL"
+          sed -i "/<\/body>/i <div style=\"position:fixed;bottom:10px;left:10px;font-size:12px;color:#666\">Project: ${project_name} | Branch: ${branch_name} | <a href=\"${commit_url}\">Commit: ${commit_sha}</a></div>" ./target/llvm-cov/html/index.html
+
+      - name: Stage Pages content
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          rm -rf pages-root
+          mkdir -p "pages-root/coverage/${BRANCH_NAME}"
+          cp -a target/llvm-cov/html/. "pages-root/coverage/${BRANCH_NAME}/"
+
+      - name: Upload coverage site artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ env.PROJECT_DIR }}/pages-root
+
+      # Remove project-specific artifacts from target, to not invalidate the cache:
+      - name: Remove project-specific artifacts
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          PROJECT_NAME=$(grep '^name' Cargo.toml | sed 's/name = "\(.*\)"/\1/')
+          find target/ | grep "${PROJECT_NAME}" | xargs -iXX rm -rf XX
+
+  deploy-coverage:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+
+    # Only this job can deploy to Pages. No repo write perms.
+    permissions:
+      pages: write
+      id-token: write
+      contents: read
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

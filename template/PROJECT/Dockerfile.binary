@@ -1,0 +1,26 @@
+# ---- Runtime only --------------------------------------------
+FROM debian:trixie-slim AS runtime
+LABEL org.opencontainers.image.source="https://github.com/${GIT_USERNAME}/${APP}"
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+ARG USER=appuser UID=1001 GID=1001
+RUN groupadd --gid "$GID" "$USER" \
+ && useradd  --uid "$UID" \
+             --gid "$GID" \
+             --create-home \
+             --shell /usr/sbin/nologin \
+             "$USER"
+
+# buildx provides TARGETOS/TARGETARCH automatically
+ARG TARGETOS
+ARG TARGETARCH
+
+# Map buildx arch names to your dist folder names
+# TARGETARCH is "amd64" or "arm64"
+COPY dist/${TARGETOS}-${TARGETARCH}/${APP} /usr/local/bin/${APP}
+
+USER $USER
+ENTRYPOINT ["${APP}"]
