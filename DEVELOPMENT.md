@@ -20,9 +20,9 @@ rustup-init ## just press enter when prompted for default selection
 ## Clone source repository
 
 ```
-git clone git@github.com:${GIT_USERNAME}/${APP}.git \
-  ~/git/vendor/${GIT_USERNAME}/${APP}
-cd ~/git/vendor/${GIT_USERNAME}/${APP}
+git clone git@github.com:enigmacurry/tt-tui-for-traefik.git \
+  ~/git/vendor/enigmacurry/tt-tui-for-traefik
+cd ~/git/vendor/enigmacurry/tt-tui-for-traefik
 ```
 
 ## Install development dependencies
@@ -32,7 +32,7 @@ cargo install just
 just deps
 ```
 
-## Build and run development ${APP}
+## Build and run development tt-tui-for-traefik
 
 ```
 just run help
@@ -49,18 +49,18 @@ just build --release
 
 ```
 ## Add this to ~/.bashrc or equivalent:
-alias ${APP}='just -f ~/git/vendor/${GIT_USERNAME}/${APP}/Justfile run'
-source <(${APP} completions bash 2> /dev/null)
+alias tt-tui-for-traefik='just -f ~/git/vendor/enigmacurry/tt-tui-for-traefik/Justfile run'
+source <(tt-tui-for-traefik completions bash 2> /dev/null)
 ```
 
-Now you can run `${APP}` from any directory, with
+Now you can run `tt-tui-for-traefik` from any directory, with
 any arguments, and it will automatically rebuild from source, and then
 run it with those args. This will have full tab-completion in your shell.
 
 ## Testing
 
 This project has incomplete testing. [See the latest coverage
-report](https://${GIT_USERNAME}.github.io/${APP}/coverage/master/).
+report](https://enigmacurry.github.io/tt-tui-for-traefik/coverage/master/).
 
 ## Run tests
 

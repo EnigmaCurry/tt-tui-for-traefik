@@ -12,7 +12,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  PROJECT_DIR: ${APP}
+  PROJECT_DIR: tt-tui-for-traefik
 
 jobs:
   build:
@@ -30,7 +30,7 @@ jobs:
         working-directory: ${{ env.PROJECT_DIR }}
 
       # Preprocess Cargo.lock to ignore version fields for cache id hashing purposes:
-      - name: Prepare Cargo.lock for caching (ignore ${APP} version)
+      - name: Prepare Cargo.lock for caching (ignore tt-tui-for-traefik version)
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           PROJECT_NAME=$(grep '^name' Cargo.toml | sed 's/name = "\(.*\)"/\1/')
@@ -41,7 +41,7 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('${APP}/Cargo.lock.no-version') }}
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('tt-tui-for-traefik/Cargo.lock.no-version') }}
           restore-keys: |
             ${{ runner.os }}-cargo-registry-
 
@@ -49,8 +49,8 @@ jobs:
       - name: Restore third-party dependencies cache
         uses: actions/cache@v3
         with:
-          path: ${APP}/target
-          key: ${{ runner.os }}-cargo-deps-${{ hashFiles('${APP}/Cargo.lock.no-version') }}
+          path: tt-tui-for-traefik/target
+          key: ${{ runner.os }}-cargo-deps-${{ hashFiles('tt-tui-for-traefik/Cargo.lock.no-version') }}
           restore-keys: |
             ${{ runner.os }}-cargo-deps-
 

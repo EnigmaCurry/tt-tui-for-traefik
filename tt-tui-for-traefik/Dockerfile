@@ -11,7 +11,7 @@ RUN cargo build --release --locked
 
 # ---- Runtime -------------------------------------------------
 FROM debian:trixie-slim AS runtime
-LABEL org.opencontainers.image.source="https://github.com/${GIT_USERNAME}/${APP}"
+LABEL org.opencontainers.image.source="https://github.com/enigmacurry/tt-tui-for-traefik"
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates && \
     rm -rf /var/lib/apt/lists/*
@@ -23,6 +23,6 @@ RUN groupadd --gid "$GID" "$USER" \
              --shell /usr/sbin/nologin \
              "$USER"
 
-COPY --from=builder /app/target/release/${APP} /usr/local/bin/${APP}
+COPY --from=builder /app/target/release/tt-tui-for-traefik /usr/local/bin/tt-tui-for-traefik
 USER $USER
-ENTRYPOINT ["${APP}"]
+ENTRYPOINT ["tt-tui-for-traefik"]
