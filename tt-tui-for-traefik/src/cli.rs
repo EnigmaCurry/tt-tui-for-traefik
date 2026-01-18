@@ -38,4 +38,5 @@ pub fn app() -> Command {
                         .value_parser(["bash", "zsh", "fish"]),
                 ),
         )
+        .subcommand(Command::new("tui").about("Launch the dashboard"))
 }

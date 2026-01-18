@@ -49,13 +49,13 @@ just build --release
 
 ```
 ## Add this to ~/.bashrc or equivalent:
-alias tt-tui-for-traefik='just -f ~/git/vendor/enigmacurry/tt-tui-for-traefik/Justfile run'
-source <(tt-tui-for-traefik completions bash 2> /dev/null)
+alias tt='just -f ~/git/vendor/enigmacurry/tt-tui-for-traefik/Justfile run'
+source <(tt completions bash 2> /dev/null)
 ```
 
-Now you can run `tt-tui-for-traefik` from any directory, with
-any arguments, and it will automatically rebuild from source, and then
-run it with those args. This will have full tab-completion in your shell.
+Now you can run `tt` from any directory, with any arguments, and it
+will automatically rebuild from source, and then run it with those
+args. This will have full tab-completion in your shell.
 
 ## Testing
 

@@ -4,6 +4,7 @@ use std::io::Write;
 
 mod cli;
 mod prelude;
+mod tui;
 
 use prelude::*;
 
@@ -36,7 +37,7 @@ fn main() {
 }
 
 fn dispatch<W1, W2>(
-    mut cmd: clap::Command,
+    _cmd: clap::Command,
     matches: clap::ArgMatches,
     out: &mut W1,
     err: &mut W2,
@@ -49,12 +50,11 @@ where
 
     // Print help if no subcommand is given.
     if matches.subcommand_name().is_none() {
-        let _ = cmd.write_help(out);
-        let _ = writeln!(out);
-        return 0;
+        return tui::run();
     }
 
     match matches.subcommand() {
+        Some(("tui", _sub_matches)) => tui::run(),
         Some(("hello", sub_matches)) => hello(sub_matches, out, err),
         Some(("completions", sub_matches)) => completions(sub_matches, out, err),
         _ => 1,
