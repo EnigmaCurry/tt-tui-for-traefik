@@ -412,22 +412,23 @@ class TraefikAPI:
     def _parse_middleware_detail(self, data: dict) -> MiddlewareDetail:
         """Parse detailed middleware data from API response."""
         # Extract the type-specific configuration
-        # Traefik returns the middleware type as a key with its config as value
-        config = None
-        middleware_type = data.get("type")
-        if middleware_type:
-            # The config is typically under a key matching the type name
-            # e.g., {"type": "stripPrefix", "stripPrefix": {"prefixes": ["/api"]}}
-            config = data.get(middleware_type) or data.get(middleware_type.lower())
+        # Standard fields that are not config data
+        standard_fields = {"name", "provider", "status", "type", "using", "usedBy", "error"}
+
+        # Find the config by looking for any non-standard fields
+        config = {}
+        for key, value in data.items():
+            if key not in standard_fields and isinstance(value, dict):
+                config[key] = value
 
         return MiddlewareDetail(
             name=data.get("name", ""),
             provider=data.get("provider", ""),
             status=data.get("status", "unknown"),
-            type=middleware_type,
+            type=data.get("type"),
             using=data.get("using"),
             used_by=data.get("usedBy"),
             error=data.get("error"),
-            config=config,
+            config=config if config else None,
             raw=data,
         )

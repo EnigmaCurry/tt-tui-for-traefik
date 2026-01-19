@@ -245,6 +245,8 @@ class TraefikTUI(App):
         self._runtime: dict[str, ProfileRuntime] = {}
         self._dirty = False
         self._monitor_interval = 5.0
+        self._consecutive_errors = 0
+        self._error_threshold = 5
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -324,6 +326,7 @@ class TraefikTUI(App):
         if event.profile_name != self.settings.selected_profile:
             self.settings.selected_profile = event.profile_name
             self._dirty = True
+            self._consecutive_errors = 0
             self._refresh_profile_list()
             # Trigger an immediate connection check
             self._check_connection_now()
@@ -397,6 +400,7 @@ class TraefikTUI(App):
             routers_view.update_tcp_routers(tcp_routers)
             routers_view.update_udp_routers(udp_routers)
             self._set_api_status(ApiStatus.SUCCESS)
+            self._consecutive_errors = 0
 
             # Re-fetch detail if it was open
             if had_detail_open and selected_router and selected_router_type:
@@ -409,7 +413,9 @@ class TraefikTUI(App):
                 await routers_view.show_detail(detail)
 
         except TraefikAPIError as e:
-            await routers_view.clear_tables()
+            self._consecutive_errors += 1
+            if self._consecutive_errors >= self._error_threshold:
+                await routers_view.clear_tables()
             self._set_api_status(ApiStatus.ERROR)
             self.notify(f"Connection error: {e}", severity="error")
 
@@ -476,6 +482,7 @@ class TraefikTUI(App):
             services_view.update_tcp_services(tcp_services)
             services_view.update_udp_services(udp_services)
             self._set_api_status(ApiStatus.SUCCESS)
+            self._consecutive_errors = 0
 
             # Re-fetch detail if it was open
             if had_detail_open and selected_service and selected_service_type:
@@ -488,7 +495,9 @@ class TraefikTUI(App):
                 await services_view.show_detail(detail)
 
         except TraefikAPIError as e:
-            await services_view.clear_tables()
+            self._consecutive_errors += 1
+            if self._consecutive_errors >= self._error_threshold:
+                await services_view.clear_tables()
             self._set_api_status(ApiStatus.ERROR)
             self.notify(f"Connection error: {e}", severity="error")
 
@@ -551,6 +560,7 @@ class TraefikTUI(App):
 
             entrypoints_view.update_entrypoints(entrypoints)
             self._set_api_status(ApiStatus.SUCCESS)
+            self._consecutive_errors = 0
 
             # Re-fetch detail if it was open
             if had_detail_open and selected_entrypoint:
@@ -558,7 +568,9 @@ class TraefikTUI(App):
                 await entrypoints_view.show_detail(detail)
 
         except TraefikAPIError as e:
-            await entrypoints_view.clear_table()
+            self._consecutive_errors += 1
+            if self._consecutive_errors >= self._error_threshold:
+                await entrypoints_view.clear_table()
             self._set_api_status(ApiStatus.ERROR)
             self.notify(f"Connection error: {e}", severity="error")
 
@@ -618,6 +630,7 @@ class TraefikTUI(App):
             middlewares_view.update_http_middlewares(http_middlewares)
             middlewares_view.update_tcp_middlewares(tcp_middlewares)
             self._set_api_status(ApiStatus.SUCCESS)
+            self._consecutive_errors = 0
 
             # Re-fetch detail if it was open
             if had_detail_open and selected_middleware and selected_middleware_type:
@@ -628,7 +641,9 @@ class TraefikTUI(App):
                 await middlewares_view.show_detail(detail)
 
         except TraefikAPIError as e:
-            await middlewares_view.clear_tables()
+            self._consecutive_errors += 1
+            if self._consecutive_errors >= self._error_threshold:
+                await middlewares_view.clear_tables()
             self._set_api_status(ApiStatus.ERROR)
             self.notify(f"Connection error: {e}", severity="error")
 
