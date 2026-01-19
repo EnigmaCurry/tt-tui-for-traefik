@@ -355,19 +355,16 @@ class TraefikAPI:
 
     def _parse_entrypoint(self, data: dict) -> Entrypoint:
         """Parse entrypoint data from API response."""
-        # Determine protocol from address or config
+        # Determine protocol from address suffix
+        # Address format: ":PORT/protocol" - e.g., ":8080/tcp", ":53/udp"
+        # If no suffix, it's HTTP
         address = data.get("address", "")
-        protocol = None
-        if data.get("http"):
-            protocol = "http"
-        elif data.get("udp"):
+        if address.endswith("/tcp"):
+            protocol = "tcp"
+        elif address.endswith("/udp"):
             protocol = "udp"
-        elif address:
-            # Infer from common ports
-            if ":443" in address or ":8443" in address:
-                protocol = "https"
-            elif ":80" in address or ":8080" in address:
-                protocol = "http"
+        else:
+            protocol = "http"
 
         return Entrypoint(
             name=data.get("name", ""),
@@ -377,17 +374,14 @@ class TraefikAPI:
 
     def _parse_entrypoint_detail(self, data: dict) -> EntrypointDetail:
         """Parse detailed entrypoint data from API response."""
+        # Determine protocol from address suffix
         address = data.get("address", "")
-        protocol = None
-        if data.get("http"):
-            protocol = "http"
-        elif data.get("udp"):
+        if address.endswith("/tcp"):
+            protocol = "tcp"
+        elif address.endswith("/udp"):
             protocol = "udp"
-        elif address:
-            if ":443" in address or ":8443" in address:
-                protocol = "https"
-            elif ":80" in address or ":8080" in address:
-                protocol = "http"
+        else:
+            protocol = "http"
 
         return EntrypointDetail(
             name=data.get("name", ""),
