@@ -7,7 +7,7 @@ from textual.message import Message
 from textual.widgets import DataTable, Label, Static, TabbedContent, TabPane
 
 from ..api import Middleware, MiddlewareDetail
-from .routers import ClickableStatic, NavigateLink
+from .routers import ClickableStatic, NavigateLink, _status_emoji
 
 
 class MiddlewareDetailPane(Vertical):
@@ -233,7 +233,7 @@ class MiddlewaresView(Vertical):
         for middleware in middlewares:
             row_data = (
                 middleware.name,
-                middleware.status,
+                _status_emoji(middleware.status),
                 middleware.type or "-",
                 middleware.provider,
             )

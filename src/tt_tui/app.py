@@ -10,7 +10,7 @@ from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
 from textual.reactive import reactive
 from textual.screen import ModalScreen
-from textual.widgets import Button, DataTable, Footer, Header, Input, Label, Static, Tab, TabbedContent, TabPane, Tabs
+from textual.widgets import Button, DataTable, Footer, Input, Label, Static, Tab, TabbedContent, TabPane, Tabs
 
 from .api import TraefikAPI, TraefikAPIError
 from .models import ConnectionStatus, Profile, ProfileRuntime, Settings
@@ -64,10 +64,8 @@ class StatusIndicator(Static):
 
     DEFAULT_CSS = """
     StatusIndicator {
-        dock: top;
         width: 3;
         height: 1;
-        background: $primary;
     }
 
     StatusIndicator.idle {
@@ -97,6 +95,73 @@ class StatusIndicator(Static):
         """Update appearance when status changes."""
         self.remove_class("loading", "success", "error", "idle")
         self.add_class(status.value)
+
+
+class TitleBar(Horizontal):
+    """Custom title bar showing status indicator, profile name, and connection status."""
+
+    DEFAULT_CSS = """
+    TitleBar {
+        dock: top;
+        width: 100%;
+        height: 1;
+        background: $primary;
+    }
+
+    TitleBar #title-profile {
+        width: auto;
+        padding: 0 1;
+    }
+
+    TitleBar #title-status {
+        width: auto;
+        color: $text;
+    }
+
+    TitleBar #title-status.connected {
+        color: #a6e3a1;
+    }
+
+    TitleBar #title-status.disconnected {
+        color: #f38ba8;
+    }
+
+    TitleBar #title-status.error {
+        color: #f38ba8;
+    }
+
+    TitleBar #title-status.connecting {
+        color: #f9e2af;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        yield StatusIndicator(id="status-indicator")
+        yield Static("No profile", id="title-profile")
+        yield Static(" :: Disconnected", id="title-status")
+
+    def update_profile(self, profile_name: str | None) -> None:
+        """Update the displayed profile name."""
+        label = self.query_one("#title-profile", Static)
+        label.update(profile_name or "No profile")
+
+    def update_connection_status(self, status: ConnectionStatus, error: str | None = None) -> None:
+        """Update the connection status display."""
+        status_label = self.query_one("#title-status", Static)
+        status_label.remove_class("connected", "disconnected", "error", "connecting")
+
+        if status == ConnectionStatus.CONNECTED:
+            status_label.update(" :: Connected")
+            status_label.add_class("connected")
+        elif status == ConnectionStatus.CONNECTING:
+            status_label.update(" :: Connecting...")
+            status_label.add_class("connecting")
+        elif status == ConnectionStatus.ERROR and error:
+            status_label.update(f" :: {error}")
+            status_label.add_class("error")
+        else:
+            status_label.update(" :: Disconnected")
+            status_label.add_class("disconnected")
 
 
 class ConfirmDialog(ModalScreen[bool]):
@@ -366,9 +431,6 @@ class SearchModal(ModalScreen[DeepLink | None]):
 class TraefikTUI(App):
     """A TUI dashboard for Traefik."""
 
-    TITLE = "TT TUI for Traefik"
-    SUB_TITLE = "Dashboard"
-
     BINDINGS = [
         Binding("q", "quit", "Quit"),
         Binding("ctrl+s", "save", "Save"),
@@ -396,15 +458,6 @@ class TraefikTUI(App):
     Screen {
         background: $background;
     }
-
-    Header {
-        background: $primary;
-    }
-
-    HeaderTitle {
-        width: 1fr;
-    }
-
 
     Footer {
         background: $surface;
@@ -479,8 +532,7 @@ class TraefikTUI(App):
         self._deep_link = deep_link
 
     def compose(self) -> ComposeResult:
-        yield Header()
-        yield StatusIndicator(id="status-indicator")
+        yield TitleBar(id="title-bar")
         with TabbedContent(initial=self.settings.active_tab):
             with TabPane("Entrypoints", id="entrypoints"):
                 yield EntrypointsView(id="entrypoints-view")
@@ -499,6 +551,7 @@ class TraefikTUI(App):
     def on_mount(self) -> None:
         """Initialize the app after mounting."""
         self._refresh_profile_list()
+        self._update_title_bar()
         self._start_monitor()
 
         # Handle deep link - switch to correct tab
@@ -522,6 +575,21 @@ class TraefikTUI(App):
         """Update the API status indicator."""
         indicator = self.query_one("#status-indicator", StatusIndicator)
         indicator.status = status
+
+    def _update_title_bar(self) -> None:
+        """Update the title bar with current profile and connection status."""
+        title_bar = self.query_one("#title-bar", TitleBar)
+        selected = self.settings.selected_profile
+
+        # Update profile name
+        title_bar.update_profile(selected)
+
+        # Update connection status
+        if selected and selected in self._runtime:
+            runtime = self._runtime[selected]
+            title_bar.update_connection_status(runtime.status, runtime.error)
+        else:
+            title_bar.update_connection_status(ConnectionStatus.DISCONNECTED)
 
     def _scroll_table_to_row(self, table: DataTable, row_key: str) -> None:
         """Scroll the table to show the given row."""
@@ -702,6 +770,9 @@ class TraefikTUI(App):
             editor.set_profile(selected, profile, runtime)
         else:
             editor.set_profile(None, None, None)
+
+        # Also update the title bar
+        self._update_title_bar()
 
     @on(TabbedContent.TabActivated)
     def on_tab_activated(self, event: TabbedContent.TabActivated) -> None:

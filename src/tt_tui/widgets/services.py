@@ -7,7 +7,7 @@ from textual.message import Message
 from textual.widgets import DataTable, Label, Static, TabbedContent, TabPane
 
 from ..api import Service, ServiceDetail
-from .routers import ClickableStatic, NavigateLink
+from .routers import ClickableStatic, NavigateLink, _status_emoji
 
 
 class ServiceDetailPane(Vertical):
@@ -237,7 +237,7 @@ class ServicesView(Vertical):
                 servers_count = str(len(service.servers_status))
             row_data = (
                 service.name,
-                service.status,
+                _status_emoji(service.status),
                 service.type or "-",
                 servers_count,
             )

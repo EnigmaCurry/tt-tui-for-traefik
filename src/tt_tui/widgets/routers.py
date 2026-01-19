@@ -9,6 +9,18 @@ from textual.widgets import DataTable, Label, Static, TabbedContent, TabPane
 from ..api import Router, RouterDetail
 
 
+def _status_emoji(status: str) -> str:
+    """Convert status string to emoji indicator."""
+    status_lower = status.lower() if status else ""
+    if status_lower == "enabled":
+        return "✅"
+    elif status_lower == "disabled":
+        return "❌"
+    elif status_lower == "warning":
+        return "⚠️"
+    return status  # Return original if unknown
+
+
 class NavigateLink(Message):
     """Message to request navigation to a resource link."""
 
@@ -236,7 +248,7 @@ class RoutersView(Vertical):
 
         # Update or add rows
         for router in routers:
-            status_text = router.status
+            status_text = _status_emoji(router.status)
             entry_points = ", ".join(router.entry_points) if router.entry_points else "-"
             row_data = (
                 router.name,
