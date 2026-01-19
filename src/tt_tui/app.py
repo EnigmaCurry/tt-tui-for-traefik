@@ -121,23 +121,10 @@ class TraefikTUI(App):
         background: $surface;
     }
 
-    /* Main layout */
-    #main-container {
-        height: 1fr;
-    }
-
-    #sidebar {
-        width: 32;
-        border-right: solid $primary-darken-2;
-    }
-
-    #content {
-        width: 1fr;
-    }
-
     /* Tabs styling */
     TabbedContent {
         background: $surface;
+        height: 1fr;
     }
 
     Tabs {
@@ -165,12 +152,17 @@ class TraefikTUI(App):
     }
 
     /* Settings pane layout */
-    #settings-pane {
-        height: 1fr;
-    }
-
     #settings-content {
         height: 1fr;
+        width: 100%;
+    }
+
+    #profile-list {
+        width: 32;
+    }
+
+    #profile-editor {
+        width: 1fr;
     }
 
     /* Placeholder tabs */
@@ -195,28 +187,26 @@ class TraefikTUI(App):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with Horizontal(id="main-container"):
-            yield ProfileList(id="sidebar")
-            with Container(id="content"):
-                with TabbedContent(initial="settings"):
-                    with TabPane("Settings", id="settings"):
-                        with Horizontal(id="settings-content"):
-                            yield ProfileEditor(id="profile-editor")
-                    with TabPane("Routers", id="routers"):
-                        with Vertical(classes="placeholder"):
-                            yield Static("Routers", classes="placeholder-title")
-                            yield Static("View and manage HTTP/TCP routers")
-                            yield Static("(Coming soon)")
-                    with TabPane("Services", id="services"):
-                        with Vertical(classes="placeholder"):
-                            yield Static("Services", classes="placeholder-title")
-                            yield Static("View backend services and load balancers")
-                            yield Static("(Coming soon)")
-                    with TabPane("Middleware", id="middleware"):
-                        with Vertical(classes="placeholder"):
-                            yield Static("Middleware", classes="placeholder-title")
-                            yield Static("View middleware chain configurations")
-                            yield Static("(Coming soon)")
+        with TabbedContent(initial=self.settings.active_tab):
+            with TabPane("Routers", id="routers"):
+                with Vertical(classes="placeholder"):
+                    yield Static("Routers", classes="placeholder-title")
+                    yield Static("View and manage HTTP/TCP routers")
+                    yield Static("(Coming soon)")
+            with TabPane("Services", id="services"):
+                with Vertical(classes="placeholder"):
+                    yield Static("Services", classes="placeholder-title")
+                    yield Static("View backend services and load balancers")
+                    yield Static("(Coming soon)")
+            with TabPane("Middleware", id="middleware"):
+                with Vertical(classes="placeholder"):
+                    yield Static("Middleware", classes="placeholder-title")
+                    yield Static("View middleware chain configurations")
+                    yield Static("(Coming soon)")
+            with TabPane("Settings", id="settings"):
+                with Horizontal(id="settings-content"):
+                    yield ProfileList(id="profile-list")
+                    yield ProfileEditor(id="profile-editor")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -226,7 +216,7 @@ class TraefikTUI(App):
 
     def _refresh_profile_list(self) -> None:
         """Refresh the profile list widget."""
-        profile_list = self.query_one("#sidebar", ProfileList)
+        profile_list = self.query_one("#profile-list", ProfileList)
         profiles = list(self.settings.profiles.keys())
         profile_list.update_profiles(profiles, self.settings.selected_profile)
 
@@ -244,6 +234,12 @@ class TraefikTUI(App):
             editor.set_profile(selected, profile, runtime)
         else:
             editor.set_profile(None, None, None)
+
+    @on(TabbedContent.TabActivated)
+    def on_tab_activated(self, event: TabbedContent.TabActivated) -> None:
+        """Handle tab changes."""
+        self.settings.active_tab = event.pane.id or "settings"
+        self._dirty = True
 
     @on(ProfileList.ProfileSelected)
     def on_profile_selected(self, event: ProfileList.ProfileSelected) -> None:

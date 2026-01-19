@@ -45,6 +45,7 @@ class Settings(BaseModel):
 
     schema_version: int = 1
     selected_profile: str | None = None
+    active_tab: str = "settings"
     profiles: dict[str, Profile] = Field(default_factory=dict)
 
     @classmethod

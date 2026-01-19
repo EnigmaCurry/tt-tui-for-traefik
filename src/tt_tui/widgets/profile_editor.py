@@ -20,7 +20,7 @@ class ProfileEditor(Vertical):
 
     ProfileEditor > .title {
         dock: top;
-        padding: 1 2;
+        padding: 0 1;
         background: $primary;
         color: $text;
         text-style: bold;
@@ -79,8 +79,8 @@ class ProfileEditor(Vertical):
             self.profile = profile
             super().__init__()
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
         self._profile_name: str | None = None
         self._profile: Profile | None = None
         self._runtime: ProfileRuntime = ProfileRuntime()
