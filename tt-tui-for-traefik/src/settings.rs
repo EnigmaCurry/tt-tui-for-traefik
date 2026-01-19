@@ -39,6 +39,9 @@ pub struct Settings {
     #[serde(default)]
     pub selected_profile: Option<String>,
 
+    #[serde(default)]
+    pub selected_tab: Option<String>,
+
     /// Profiles keyed by profile name.
     #[serde(default)]
     pub profiles: BTreeMap<String, Profile>,
@@ -77,6 +80,7 @@ impl Default for Settings {
             schema_version: 1,
             selected_profile: None,
             profiles: BTreeMap::new(),
+            selected_tab: Some("Settings".to_string()),
             runtime: BTreeMap::new(),
         };
 
@@ -338,5 +342,15 @@ impl Settings {
         }
 
         Some(final_name)
+    }
+
+    pub fn selected_tab_name(&self) -> &str {
+        self.selected_tab.as_deref().unwrap_or("Settings")
+    }
+
+    pub fn set_selected_tab_name(&mut self, tab: &str) {
+        self.selected_tab = Some(tab.to_string());
+        // Match whatever behavior you use for selected profile persistence:
+        let _ = self.save();
     }
 }

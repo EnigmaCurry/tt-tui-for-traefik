@@ -121,7 +121,9 @@ fn help_text(focus: Focus, tab: &str, tab_count: usize) -> String {
             }
         }
         Focus::SettingsProfiles => {
-            s.push_str(" | \u{2191}/\u{2193}: select profile | Enter: add profile (todo)");
+            s.push_str(
+                " | \u{2191}/\u{2193}: select profile | C: add profile | DEL: remove profile",
+            );
         }
         Focus::SettingsDetails => {
             s.push_str(" | \u{2191}/\u{2193}: select field | type to edit | Backspace: delete");
@@ -254,7 +256,9 @@ fn run_inner() -> io::Result<()> {
     let mut dirty = false;
 
     // Which tab is selected (index into current tab list)
-    let mut selected_tab: usize = 0;
+    // Persist by name to survive dynamic tab sets.
+    let mut selected_tab_name: String = settings.selected_tab_name().to_string();
+    let mut selected_tab: usize = 0; // derived each loop from selected_tab_name
 
     // Which field is selected in Settings details pane
     let mut detail_field = DetailField::Url;
@@ -328,14 +332,15 @@ fn run_inner() -> io::Result<()> {
 
         // Dynamic tabs based on connection status.
         let tab_names: &[&str] = if connected {
-            &["Settings", "Routers", "Services", "Middleware"]
+            &["Routers", "Services", "Middleware", "Settings"]
         } else {
             &["Settings"]
         };
 
-        if selected_tab >= tab_names.len() {
-            selected_tab = 0;
-        }
+        selected_tab = tab_names
+            .iter()
+            .position(|t| *t == selected_tab_name.as_str())
+            .unwrap_or(0);
 
         let is_settings_tab = tab_names[selected_tab] == "Settings";
 
@@ -349,7 +354,7 @@ fn run_inner() -> io::Result<()> {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
-                    Constraint::Length(4), // top (tabs + status)
+                    Constraint::Length(3), // top (tabs + status)
                     Constraint::Min(0),    // middle
                     Constraint::Length(1), // bottom (help)
                 ])
@@ -364,7 +369,14 @@ fn run_inner() -> io::Result<()> {
 
             let top_block = Block::default()
                 .borders(top_borders)
-                .title(title_with_indent("tt-tui-for-traefik", top_borders));
+                .title(title_with_indent(
+                    &if connected {
+                        format!("{selected_name}")
+                    } else {
+                        format!("{selected_name}: Disconnected")
+                    },
+                    top_borders,
+                ));
 
             f.render_widget(top_block.clone(), chunks[0]);
 
@@ -379,13 +391,6 @@ fn run_inner() -> io::Result<()> {
                 .select(selected_tab)
                 .highlight_style(Style::default().add_modifier(Modifier::BOLD));
             f.render_widget(tabs, top_rows[0]);
-
-            // let status = if connected {
-            //     "Status: Connected."
-            // } else {
-            //     "Status: Disconnected."
-            // };
-            // f.render_widget(Paragraph::new(status), top_rows[1]);
 
             // --- Middle area ---
             let middle_title = tab_names[selected_tab];
@@ -430,10 +435,6 @@ fn run_inner() -> io::Result<()> {
                     }
                 }
                 left_text.push('\n');
-                if focus == Focus::SettingsProfiles {
-                    left_text.push_str("Press C to create new profile.\n");
-                    left_text.push_str("Press DEL to remove profile.\n");
-                }
                 f.render_widget(Paragraph::new(left_text), left_inner);
 
                 // Right: details editor
@@ -647,16 +648,24 @@ fn run_inner() -> io::Result<()> {
                         KeyCode::Left if focus == Focus::Top && tab_names.len() > 1 => {
                             maybe_rename_selected_profile(&mut settings, &mut dirty);
                             save_if_dirty(&settings, &mut dirty);
+
                             if selected_tab == 0 {
                                 selected_tab = tab_names.len() - 1;
                             } else {
                                 selected_tab -= 1;
                             }
+
+                            selected_tab_name = tab_names[selected_tab].to_string();
+                            settings.set_selected_tab_name(&selected_tab_name);
                         }
                         KeyCode::Right if focus == Focus::Top && tab_names.len() > 1 => {
                             maybe_rename_selected_profile(&mut settings, &mut dirty);
                             save_if_dirty(&settings, &mut dirty);
+
                             selected_tab = (selected_tab + 1) % tab_names.len();
+
+                            selected_tab_name = tab_names[selected_tab].to_string();
+                            settings.set_selected_tab_name(&selected_tab_name);
                         }
 
                         // Settings: profiles list navigation
@@ -728,7 +737,7 @@ fn run_inner() -> io::Result<()> {
                             if focus == Focus::SettingsProfiles =>
                         {
                             save_if_dirty(&settings, &mut dirty);
-                            let _new_name = settings.add_profile("new");
+                            let _new_name = settings.add_profile("new_profile");
                             dirty = true;
                             save_if_dirty(&settings, &mut dirty);
                         }
