@@ -13,7 +13,7 @@ from textual.widgets import Button, Footer, Header, Input, Label, Static, Tab, T
 from .api import TraefikAPI, TraefikAPIError
 from .models import ConnectionStatus, Profile, ProfileRuntime, Settings
 from .monitor import check_connection
-from .widgets import ProfileEditor, ProfileList, RoutersView, ServicesView, StatusBar
+from .widgets import EntrypointsView, MiddlewaresView, ProfileEditor, ProfileList, RoutersView, ServicesView, StatusBar
 
 
 class ApiStatus(str, Enum):
@@ -250,15 +250,14 @@ class TraefikTUI(App):
         yield Header()
         yield StatusIndicator(id="status-indicator")
         with TabbedContent(initial=self.settings.active_tab):
+            with TabPane("Entrypoints", id="entrypoints"):
+                yield EntrypointsView(id="entrypoints-view")
             with TabPane("Routers", id="routers"):
                 yield RoutersView(id="routers-view")
             with TabPane("Services", id="services"):
                 yield ServicesView(id="services-view")
             with TabPane("Middleware", id="middleware"):
-                with Vertical(classes="placeholder"):
-                    yield Static("Middleware", classes="placeholder-title")
-                    yield Static("View middleware chain configurations")
-                    yield Static("(Coming soon)")
+                yield MiddlewaresView(id="middlewares-view")
             with TabPane("Settings", id="settings"):
                 with Horizontal(id="settings-content"):
                     yield ProfileList(id="profile-list")
@@ -280,10 +279,14 @@ class TraefikTUI(App):
     def _refresh_current_tab(self) -> None:
         """Refresh data for the currently active tab."""
         active_tab = self.settings.active_tab
-        if active_tab == "routers":
+        if active_tab == "entrypoints":
+            self._refresh_entrypoints()
+        elif active_tab == "routers":
             self._refresh_routers()
         elif active_tab == "services":
             self._refresh_services()
+        elif active_tab == "middleware":
+            self._refresh_middlewares()
 
     def _refresh_profile_list(self) -> None:
         """Refresh the profile list widget."""
@@ -310,7 +313,7 @@ class TraefikTUI(App):
     def on_tab_activated(self, event: TabbedContent.TabActivated) -> None:
         """Handle tab changes."""
         # Only handle main app tabs, not sub-tabs
-        if event.pane.id in ("routers", "services", "middleware", "settings"):
+        if event.pane.id in ("entrypoints", "routers", "services", "middleware", "settings"):
             self.settings.active_tab = event.pane.id
             self._dirty = True
             self._refresh_current_tab()
@@ -406,8 +409,9 @@ class TraefikTUI(App):
                 await routers_view.show_detail(detail)
 
         except TraefikAPIError as e:
-            routers_view.show_error(str(e))
+            await routers_view.clear_tables()
             self._set_api_status(ApiStatus.ERROR)
+            self.notify(f"Connection error: {e}", severity="error")
 
     @on(RoutersView.RouterSelected)
     def on_router_selected(self, event: RoutersView.RouterSelected) -> None:
@@ -484,8 +488,9 @@ class TraefikTUI(App):
                 await services_view.show_detail(detail)
 
         except TraefikAPIError as e:
-            services_view.show_error(str(e))
+            await services_view.clear_tables()
             self._set_api_status(ApiStatus.ERROR)
+            self.notify(f"Connection error: {e}", severity="error")
 
     @on(ServicesView.ServiceSelected)
     def on_service_selected(self, event: ServicesView.ServiceSelected) -> None:
@@ -519,6 +524,144 @@ class TraefikTUI(App):
             self._set_api_status(ApiStatus.SUCCESS)
         except TraefikAPIError as e:
             self.notify(f"Failed to fetch service details: {e}", severity="error")
+            self._set_api_status(ApiStatus.ERROR)
+
+    @work(exclusive=True, group="entrypoints")
+    async def _refresh_entrypoints(self) -> None:
+        """Fetch and display entrypoints from the selected profile."""
+        selected = self.settings.selected_profile
+        if not selected or selected not in self.settings.profiles:
+            return
+
+        profile = self.settings.profiles[selected]
+        if not profile.url:
+            return
+
+        entrypoints_view = self.query_one("#entrypoints-view", EntrypointsView)
+
+        # Remember if detail pane was open and which entrypoint
+        had_detail_open = entrypoints_view.has_detail_open()
+        selected_entrypoint = entrypoints_view.get_selected_entrypoint()
+
+        self._set_api_status(ApiStatus.LOADING)
+
+        try:
+            api = TraefikAPI(profile.url, profile.basic_auth)
+            entrypoints = await api.get_entrypoints()
+
+            entrypoints_view.update_entrypoints(entrypoints)
+            self._set_api_status(ApiStatus.SUCCESS)
+
+            # Re-fetch detail if it was open
+            if had_detail_open and selected_entrypoint:
+                detail = await api.get_entrypoint(selected_entrypoint)
+                await entrypoints_view.show_detail(detail)
+
+        except TraefikAPIError as e:
+            await entrypoints_view.clear_table()
+            self._set_api_status(ApiStatus.ERROR)
+            self.notify(f"Connection error: {e}", severity="error")
+
+    @on(EntrypointsView.EntrypointSelected)
+    def on_entrypoint_selected(self, event: EntrypointsView.EntrypointSelected) -> None:
+        """Handle entrypoint selection for detail view."""
+        self._fetch_entrypoint_detail(event.entrypoint_name)
+
+    @work(exclusive=True, group="entrypoint-detail")
+    async def _fetch_entrypoint_detail(self, entrypoint_name: str) -> None:
+        """Fetch and display entrypoint detail."""
+        selected = self.settings.selected_profile
+        if not selected or selected not in self.settings.profiles:
+            return
+
+        profile = self.settings.profiles[selected]
+        if not profile.url:
+            return
+
+        self._set_api_status(ApiStatus.LOADING)
+
+        try:
+            api = TraefikAPI(profile.url, profile.basic_auth)
+            detail = await api.get_entrypoint(entrypoint_name)
+
+            entrypoints_view = self.query_one("#entrypoints-view", EntrypointsView)
+            await entrypoints_view.show_detail(detail)
+            self._set_api_status(ApiStatus.SUCCESS)
+        except TraefikAPIError as e:
+            self.notify(f"Failed to fetch entrypoint details: {e}", severity="error")
+            self._set_api_status(ApiStatus.ERROR)
+
+    @work(exclusive=True, group="middlewares")
+    async def _refresh_middlewares(self) -> None:
+        """Fetch and display middlewares from the selected profile."""
+        selected = self.settings.selected_profile
+        if not selected or selected not in self.settings.profiles:
+            return
+
+        profile = self.settings.profiles[selected]
+        if not profile.url:
+            return
+
+        middlewares_view = self.query_one("#middlewares-view", MiddlewaresView)
+
+        # Remember if detail pane was open and which middleware
+        had_detail_open = middlewares_view.has_detail_open()
+        selected_middleware, selected_middleware_type = middlewares_view.get_selected_middleware()
+
+        self._set_api_status(ApiStatus.LOADING)
+
+        try:
+            api = TraefikAPI(profile.url, profile.basic_auth)
+            http_middlewares = await api.get_http_middlewares()
+            tcp_middlewares = await api.get_tcp_middlewares()
+
+            middlewares_view.update_http_middlewares(http_middlewares)
+            middlewares_view.update_tcp_middlewares(tcp_middlewares)
+            self._set_api_status(ApiStatus.SUCCESS)
+
+            # Re-fetch detail if it was open
+            if had_detail_open and selected_middleware and selected_middleware_type:
+                if selected_middleware_type == "tcp":
+                    detail = await api.get_tcp_middleware(selected_middleware)
+                else:
+                    detail = await api.get_http_middleware(selected_middleware)
+                await middlewares_view.show_detail(detail)
+
+        except TraefikAPIError as e:
+            await middlewares_view.clear_tables()
+            self._set_api_status(ApiStatus.ERROR)
+            self.notify(f"Connection error: {e}", severity="error")
+
+    @on(MiddlewaresView.MiddlewareSelected)
+    def on_middleware_selected(self, event: MiddlewaresView.MiddlewareSelected) -> None:
+        """Handle middleware selection for detail view."""
+        self._fetch_middleware_detail(event.middleware_name, event.middleware_type)
+
+    @work(exclusive=True, group="middleware-detail")
+    async def _fetch_middleware_detail(self, middleware_name: str, middleware_type: str) -> None:
+        """Fetch and display middleware detail."""
+        selected = self.settings.selected_profile
+        if not selected or selected not in self.settings.profiles:
+            return
+
+        profile = self.settings.profiles[selected]
+        if not profile.url:
+            return
+
+        self._set_api_status(ApiStatus.LOADING)
+
+        try:
+            api = TraefikAPI(profile.url, profile.basic_auth)
+            if middleware_type == "tcp":
+                detail = await api.get_tcp_middleware(middleware_name)
+            else:
+                detail = await api.get_http_middleware(middleware_name)
+
+            middlewares_view = self.query_one("#middlewares-view", MiddlewaresView)
+            await middlewares_view.show_detail(detail)
+            self._set_api_status(ApiStatus.SUCCESS)
+        except TraefikAPIError as e:
+            self.notify(f"Failed to fetch middleware details: {e}", severity="error")
             self._set_api_status(ApiStatus.ERROR)
 
     @work(exclusive=True, group="monitor")
@@ -571,7 +714,13 @@ class TraefikTUI(App):
 
     async def action_escape_context(self) -> None:
         """Handle ESC contextually - dismiss panes, blur inputs, or focus tabs."""
-        # First, check if router detail pane is visible
+        # Check if entrypoints detail pane is visible
+        entrypoints_view = self.query_one("#entrypoints-view", EntrypointsView)
+        if entrypoints_view._detail_pane is not None:
+            await entrypoints_view._close_detail_pane()
+            return
+
+        # Check if router detail pane is visible
         routers_view = self.query_one("#routers-view", RoutersView)
         if routers_view._detail_pane is not None:
             await routers_view._close_detail_pane()
@@ -581,6 +730,12 @@ class TraefikTUI(App):
         services_view = self.query_one("#services-view", ServicesView)
         if services_view._detail_pane is not None:
             await services_view._close_detail_pane()
+            return
+
+        # Check if middlewares detail pane is visible
+        middlewares_view = self.query_one("#middlewares-view", MiddlewaresView)
+        if middlewares_view._detail_pane is not None:
+            await middlewares_view._close_detail_pane()
             return
 
         focused = self.focused

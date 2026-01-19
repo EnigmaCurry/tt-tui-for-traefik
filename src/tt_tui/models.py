@@ -40,7 +40,7 @@ class ProfileRuntime(BaseModel):
     error: str | None = None
 
 
-_VALID_TABS = frozenset({"routers", "services", "middleware", "settings"})
+_VALID_TABS = frozenset({"entrypoints", "routers", "services", "middleware", "settings"})
 
 
 class Settings(BaseModel):
@@ -48,7 +48,7 @@ class Settings(BaseModel):
 
     schema_version: int = 1
     selected_profile: str | None = None
-    active_tab: str = "settings"
+    active_tab: str = "entrypoints"
     profiles: dict[str, Profile] = Field(default_factory=dict)
 
     @field_validator("active_tab")
@@ -56,7 +56,7 @@ class Settings(BaseModel):
     def validate_active_tab(cls, v: str) -> str:
         """Ensure active_tab is a valid tab ID."""
         if v not in _VALID_TABS:
-            return "settings"
+            return "entrypoints"
         return v
 
     @classmethod

@@ -80,6 +80,57 @@ class ServiceDetail:
     raw: dict | None = None
 
 
+@dataclass
+class Entrypoint:
+    """A Traefik entrypoint (summary)."""
+
+    name: str
+    address: str
+    protocol: str | None = None
+
+
+@dataclass
+class EntrypointDetail:
+    """Detailed Traefik entrypoint information."""
+
+    name: str
+    address: str
+    protocol: str | None = None
+    transport: dict | None = None
+    forwarded_headers: dict | None = None
+    http: dict | None = None
+    udp: dict | None = None
+    # Raw data for any extra fields
+    raw: dict | None = None
+
+
+@dataclass
+class Middleware:
+    """A Traefik middleware (summary)."""
+
+    name: str
+    provider: str
+    status: str
+    type: str | None = None
+
+
+@dataclass
+class MiddlewareDetail:
+    """Detailed Traefik middleware information."""
+
+    name: str
+    provider: str
+    status: str
+    type: str | None = None
+    using: list[str] | None = None
+    used_by: list[str] | None = None
+    error: list[str] | None = None
+    # Type-specific configuration (e.g., stripPrefix, headers, rateLimit config)
+    config: dict | None = None
+    # Raw data for any extra fields
+    raw: dict | None = None
+
+
 class TraefikAPIError(Exception):
     """Base exception for Traefik API errors."""
 
@@ -133,8 +184,13 @@ class TraefikAPI:
             raise TraefikTimeoutError("Connection timed out") from e
         except httpx.ConnectError as e:
             raise TraefikConnectionError("Unable to connect") from e
+        except httpx.RemoteProtocolError as e:
+            raise TraefikConnectionError("Server disconnected") from e
         except httpx.HTTPStatusError as e:
             raise TraefikHTTPError(e.response.status_code) from e
+        except httpx.RequestError as e:
+            # Catch any other httpx request errors
+            raise TraefikConnectionError(str(e)) from e
 
     async def _get(self, path: str) -> dict | list:
         """Make a GET request."""
@@ -208,6 +264,36 @@ class TraefikAPI:
         data = await self._get(f"/api/udp/services/{name}")
         return self._parse_service_detail(data)
 
+    async def get_entrypoints(self) -> list[Entrypoint]:
+        """Get all entrypoints."""
+        data = await self._get("/api/entrypoints")
+        return [self._parse_entrypoint(e) for e in data]
+
+    async def get_entrypoint(self, name: str) -> EntrypointDetail:
+        """Get details for a specific entrypoint."""
+        data = await self._get(f"/api/entrypoints/{name}")
+        return self._parse_entrypoint_detail(data)
+
+    async def get_http_middlewares(self) -> list[Middleware]:
+        """Get all HTTP middlewares."""
+        data = await self._get("/api/http/middlewares")
+        return [self._parse_middleware(m) for m in data]
+
+    async def get_tcp_middlewares(self) -> list[Middleware]:
+        """Get all TCP middlewares."""
+        data = await self._get("/api/tcp/middlewares")
+        return [self._parse_middleware(m) for m in data]
+
+    async def get_http_middleware(self, name: str) -> MiddlewareDetail:
+        """Get details for a specific HTTP middleware."""
+        data = await self._get(f"/api/http/middlewares/{name}")
+        return self._parse_middleware_detail(data)
+
+    async def get_tcp_middleware(self, name: str) -> MiddlewareDetail:
+        """Get details for a specific TCP middleware."""
+        data = await self._get(f"/api/tcp/middlewares/{name}")
+        return self._parse_middleware_detail(data)
+
     def _parse_router(self, data: dict) -> Router:
         """Parse router data from API response."""
         return Router(
@@ -264,5 +350,84 @@ class TraefikAPI:
             using=data.get("using"),
             used_by=data.get("usedBy"),
             error=data.get("error"),
+            raw=data,
+        )
+
+    def _parse_entrypoint(self, data: dict) -> Entrypoint:
+        """Parse entrypoint data from API response."""
+        # Determine protocol from address or config
+        address = data.get("address", "")
+        protocol = None
+        if data.get("http"):
+            protocol = "http"
+        elif data.get("udp"):
+            protocol = "udp"
+        elif address:
+            # Infer from common ports
+            if ":443" in address or ":8443" in address:
+                protocol = "https"
+            elif ":80" in address or ":8080" in address:
+                protocol = "http"
+
+        return Entrypoint(
+            name=data.get("name", ""),
+            address=address,
+            protocol=protocol,
+        )
+
+    def _parse_entrypoint_detail(self, data: dict) -> EntrypointDetail:
+        """Parse detailed entrypoint data from API response."""
+        address = data.get("address", "")
+        protocol = None
+        if data.get("http"):
+            protocol = "http"
+        elif data.get("udp"):
+            protocol = "udp"
+        elif address:
+            if ":443" in address or ":8443" in address:
+                protocol = "https"
+            elif ":80" in address or ":8080" in address:
+                protocol = "http"
+
+        return EntrypointDetail(
+            name=data.get("name", ""),
+            address=address,
+            protocol=protocol,
+            transport=data.get("transport"),
+            forwarded_headers=data.get("forwardedHeaders"),
+            http=data.get("http"),
+            udp=data.get("udp"),
+            raw=data,
+        )
+
+    def _parse_middleware(self, data: dict) -> Middleware:
+        """Parse middleware data from API response."""
+        return Middleware(
+            name=data.get("name", ""),
+            provider=data.get("provider", ""),
+            status=data.get("status", "unknown"),
+            type=data.get("type"),
+        )
+
+    def _parse_middleware_detail(self, data: dict) -> MiddlewareDetail:
+        """Parse detailed middleware data from API response."""
+        # Extract the type-specific configuration
+        # Traefik returns the middleware type as a key with its config as value
+        config = None
+        middleware_type = data.get("type")
+        if middleware_type:
+            # The config is typically under a key matching the type name
+            # e.g., {"type": "stripPrefix", "stripPrefix": {"prefixes": ["/api"]}}
+            config = data.get(middleware_type) or data.get(middleware_type.lower())
+
+        return MiddlewareDetail(
+            name=data.get("name", ""),
+            provider=data.get("provider", ""),
+            status=data.get("status", "unknown"),
+            type=middleware_type,
+            using=data.get("using"),
+            used_by=data.get("usedBy"),
+            error=data.get("error"),
+            config=config,
             raw=data,
         )
