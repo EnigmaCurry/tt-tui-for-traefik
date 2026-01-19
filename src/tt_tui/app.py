@@ -169,6 +169,200 @@ class ConfirmDialog(ModalScreen[bool]):
         self.dismiss(False)
 
 
+@dataclass
+class SearchResult:
+    """A search result item."""
+
+    resource_type: str  # entrypoint, router, service, middleware
+    protocol: str  # http, tcp, udp, or empty for entrypoints
+    name: str
+    extra_info: str = ""  # type for services/middlewares, rule for routers
+
+    @property
+    def display_type(self) -> str:
+        """Get display string for the type."""
+        if self.protocol and self.resource_type != "entrypoint":
+            return f"{self.resource_type}:{self.protocol}"
+        return self.resource_type
+
+    @property
+    def display_info(self) -> str:
+        """Get display string with extra info."""
+        if self.extra_info:
+            # Truncate long rules
+            info = self.extra_info[:40] + "..." if len(self.extra_info) > 40 else self.extra_info
+            return info
+        return ""
+
+    def matches(self, query: str) -> bool:
+        """Check if this result matches the search query."""
+        query = query.lower()
+        return (
+            query in self.name.lower()
+            or query in self.extra_info.lower()
+            or query in self.resource_type.lower()
+            or query in self.protocol.lower()
+        )
+
+    def to_deep_link(self) -> DeepLink:
+        """Convert to a DeepLink."""
+        return DeepLink(
+            resource_type=self.resource_type,
+            resource_name=self.name,
+            protocol=self.protocol or "http",
+        )
+
+
+class SearchModal(ModalScreen[DeepLink | None]):
+    """A search modal for finding resources."""
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+        Binding("enter", "select", "Select", show=False),
+        Binding("up", "cursor_up", "Up", show=False),
+        Binding("down", "cursor_down", "Down", show=False),
+    ]
+
+    DEFAULT_CSS = """
+    SearchModal {
+        align: center middle;
+    }
+
+    SearchModal > Vertical {
+        width: 80;
+        max-width: 90%;
+        height: auto;
+        max-height: 80%;
+        border: thick $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+
+    SearchModal .search-title {
+        text-style: bold;
+        padding-bottom: 1;
+    }
+
+    SearchModal Input {
+        margin-bottom: 1;
+    }
+
+    SearchModal DataTable {
+        height: auto;
+        max-height: 20;
+    }
+
+    SearchModal .no-results {
+        color: $text-muted;
+        text-align: center;
+        padding: 1;
+    }
+
+    SearchModal .result-type {
+        color: $accent;
+    }
+    """
+
+    def __init__(self, results: list[SearchResult]) -> None:
+        super().__init__()
+        self._all_results = results
+        self._filtered_results: list[SearchResult] = []
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Label("Search Resources", classes="search-title")
+            yield Input(placeholder="Type to search...", id="search-input")
+            yield DataTable(id="search-results")
+            yield Label("No results", id="no-results", classes="no-results")
+
+    def on_mount(self) -> None:
+        """Set up the search modal."""
+        table = self.query_one("#search-results", DataTable)
+        table.add_columns("Type", "Name", "Info")
+        table.cursor_type = "row"
+        table.display = False
+
+        no_results = self.query_one("#no-results", Label)
+        no_results.display = False
+
+        # Focus the input
+        self.query_one("#search-input", Input).focus()
+
+    @on(Input.Changed, "#search-input")
+    def on_search_changed(self, event: Input.Changed) -> None:
+        """Filter results as the user types."""
+        query = event.value.strip()
+        table = self.query_one("#search-results", DataTable)
+        no_results = self.query_one("#no-results", Label)
+
+        table.clear()
+        self._filtered_results = []
+
+        if not query:
+            table.display = False
+            no_results.display = False
+            return
+
+        # Filter results using the matches method (searches name, type, rule, etc.)
+        for result in self._all_results:
+            if result.matches(query):
+                self._filtered_results.append(result)
+
+        if self._filtered_results:
+            table.display = True
+            no_results.display = False
+            for i, result in enumerate(self._filtered_results[:50]):  # Limit to 50 results
+                # Use index as key to avoid duplicates (same name can exist in different types/protocols)
+                table.add_row(result.display_type, result.name, result.display_info, key=str(i))
+            # Select first row
+            if table.row_count > 0:
+                table.move_cursor(row=0)
+        else:
+            table.display = False
+            no_results.display = True
+
+    @on(Input.Submitted, "#search-input")
+    def on_search_submitted(self, event: Input.Submitted) -> None:
+        """Handle Enter key in search input - select first result."""
+        self._select_current()
+
+    @on(DataTable.RowSelected, "#search-results")
+    def on_row_selected(self, event: DataTable.RowSelected) -> None:
+        """Handle result selection."""
+        self._select_current()
+
+    def action_select(self) -> None:
+        """Select the current result."""
+        self._select_current()
+
+    def _select_current(self) -> None:
+        """Select the currently highlighted result."""
+        table = self.query_one("#search-results", DataTable)
+        if table.row_count == 0 or not self._filtered_results:
+            return
+
+        cursor_row = table.cursor_row
+        if cursor_row is not None and 0 <= cursor_row < len(self._filtered_results):
+            result = self._filtered_results[cursor_row]
+            self.dismiss(result.to_deep_link())
+
+    def action_cancel(self) -> None:
+        """Cancel the search."""
+        self.dismiss(None)
+
+    def action_cursor_up(self) -> None:
+        """Move cursor up in results."""
+        table = self.query_one("#search-results", DataTable)
+        if table.display and table.row_count > 0:
+            table.action_cursor_up()
+
+    def action_cursor_down(self) -> None:
+        """Move cursor down in results."""
+        table = self.query_one("#search-results", DataTable)
+        if table.display and table.row_count > 0:
+            table.action_cursor_down()
+
+
 class TraefikTUI(App):
     """A TUI dashboard for Traefik."""
 
@@ -178,6 +372,7 @@ class TraefikTUI(App):
     BINDINGS = [
         Binding("q", "quit", "Quit"),
         Binding("ctrl+s", "save", "Save"),
+        Binding("/", "search", "Search"),
         Binding("escape", "escape_context", "Back", show=False),
         Binding("enter", "enter_context", "Enter", show=False),
     ]
@@ -1032,6 +1227,60 @@ class TraefikTUI(App):
         if self._dirty:
             self.settings.save()
         self.exit()
+
+    def action_search(self) -> None:
+        """Open the global search modal."""
+        # Collect all resources from all views
+        results: list[SearchResult] = []
+
+        # Entrypoints
+        entrypoints_view = self.query_one("#entrypoints-view", EntrypointsView)
+        for ep in entrypoints_view._entrypoints:
+            results.append(SearchResult("entrypoint", "", ep.name, ep.address))
+
+        # Routers (include rule as extra_info)
+        routers_view = self.query_one("#routers-view", RoutersView)
+        for router in routers_view._http_routers:
+            results.append(SearchResult("router", "http", router.name, router.rule or ""))
+        for router in routers_view._tcp_routers:
+            results.append(SearchResult("router", "tcp", router.name, router.rule or ""))
+        for router in routers_view._udp_routers:
+            results.append(SearchResult("router", "udp", router.name, router.rule or ""))
+
+        # Services (include type as extra_info)
+        services_view = self.query_one("#services-view", ServicesView)
+        for service in services_view._http_services:
+            results.append(SearchResult("service", "http", service.name, service.type or ""))
+        for service in services_view._tcp_services:
+            results.append(SearchResult("service", "tcp", service.name, service.type or ""))
+        for service in services_view._udp_services:
+            results.append(SearchResult("service", "udp", service.name, service.type or ""))
+
+        # Middlewares (include type as extra_info)
+        middlewares_view = self.query_one("#middlewares-view", MiddlewaresView)
+        for mw in middlewares_view._http_middlewares:
+            results.append(SearchResult("middleware", "http", mw.name, mw.type or ""))
+        for mw in middlewares_view._tcp_middlewares:
+            results.append(SearchResult("middleware", "tcp", mw.name, mw.type or ""))
+
+        def handle_search_result(deep_link: DeepLink | None) -> None:
+            if deep_link:
+                self._deep_link = deep_link
+                # Switch to the correct tab
+                tab_map = {
+                    "entrypoint": "entrypoints",
+                    "router": "routers",
+                    "service": "services",
+                    "middleware": "middleware",
+                }
+                target_tab = tab_map.get(deep_link.resource_type)
+                if target_tab:
+                    self.settings.active_tab = target_tab
+                    tabbed_content = self.query_one(TabbedContent)
+                    tabbed_content.active = target_tab
+                    self._refresh_current_tab()
+
+        self.push_screen(SearchModal(results), handle_search_result)
 
     @on(NavigateLink)
     def on_navigate_link(self, event: NavigateLink) -> None:
