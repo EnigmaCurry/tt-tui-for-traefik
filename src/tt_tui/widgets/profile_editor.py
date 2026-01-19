@@ -40,8 +40,13 @@ class ProfileEditor(Vertical):
     }
 
     ProfileEditor .status-section {
+        height: auto;
         padding: 1 2;
         border-top: solid $primary-darken-2;
+    }
+
+    ProfileEditor VerticalScroll {
+        height: 1fr;
     }
 
     ProfileEditor .status-connected {
@@ -97,11 +102,10 @@ class ProfileEditor(Vertical):
 
                 yield Label("Password", classes="field-label")
                 yield Input(placeholder="(optional)", password=True, id="password-input")
-
-            with Vertical(classes="status-section"):
-                yield Static("Status", classes="field-label")
-                yield Static("Disconnected", id="status-display", classes="status-disconnected")
-                yield Static("", id="version-display", classes="version")
+        with Vertical(classes="status-section"):
+            yield Static("Status", classes="field-label")
+            yield Static("Disconnected", id="status-display", classes="status-disconnected")
+            yield Static("", id="version-display", classes="version")
 
     def set_profile(
         self, name: str | None, profile: Profile | None, runtime: ProfileRuntime | None = None
