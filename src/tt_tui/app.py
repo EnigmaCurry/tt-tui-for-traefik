@@ -565,9 +565,33 @@ class TraefikTUI(App):
 
     """
 
-    def __init__(self, deep_link: DeepLink | None = None) -> None:
+    def __init__(
+        self,
+        deep_link: DeepLink | None = None,
+        direct_url: str | None = None,
+        direct_username: str | None = None,
+        direct_password: str | None = None,
+    ) -> None:
         super().__init__()
+        self._direct_mode = direct_url is not None
         self.settings = Settings.load()
+
+        # In direct mode, create a temporary profile
+        if self._direct_mode:
+            from .models import BasicAuth
+
+            basic_auth = None
+            if direct_username or direct_password:
+                basic_auth = BasicAuth(
+                    username=direct_username or "",
+                    password=direct_password or "",
+                )
+            self.settings.profiles = {"direct": Profile(url=direct_url, basic_auth=basic_auth)}
+            self.settings.selected_profile = "direct"
+            # Don't start on settings tab in direct mode
+            if self.settings.active_tab == "settings":
+                self.settings.active_tab = "entrypoints"
+
         self._runtime: dict[str, ProfileRuntime] = {}
         self._dirty = False
         self._monitor_interval = 5.0
@@ -618,10 +642,11 @@ class TraefikTUI(App):
                 yield ServicesView(id="services-view")
             with TabPane("Middleware", id="middleware"):
                 yield MiddlewaresView(id="middlewares-view")
-            with TabPane("Settings", id="settings"):
-                with Horizontal(id="settings-content"):
-                    yield ProfileList(id="profile-list")
-                    yield ProfileEditor(id="profile-editor")
+            if not self._direct_mode:
+                with TabPane("Settings", id="settings"):
+                    with Horizontal(id="settings-content"):
+                        yield ProfileList(id="profile-list")
+                        yield ProfileEditor(id="profile-editor")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -629,6 +654,8 @@ class TraefikTUI(App):
         self._refresh_profile_list()
         self._update_title_bar()
         self._start_monitor()
+        # Trigger immediate connection check
+        self._check_connection_now()
 
         # Handle deep link - switch to correct tab
         if self._deep_link:
@@ -657,8 +684,11 @@ class TraefikTUI(App):
         title_bar = self.query_one("#title-bar", TitleBar)
         selected = self.settings.selected_profile
 
-        # Update profile name
-        title_bar.update_profile(selected)
+        # Update profile name (show URL in direct mode)
+        if self._direct_mode and selected and selected in self.settings.profiles:
+            title_bar.update_profile(self.settings.profiles[selected].url)
+        else:
+            title_bar.update_profile(selected)
 
         # Update connection status
         if selected and selected in self._runtime:
@@ -828,6 +858,9 @@ class TraefikTUI(App):
 
     def _refresh_profile_list(self) -> None:
         """Refresh the profile list widget."""
+        if self._direct_mode:
+            self._update_title_bar()
+            return
         profile_list = self.query_one("#profile-list", ProfileList)
         profiles = list(self.settings.profiles.keys())
         profile_list.update_profiles(profiles, self.settings.selected_profile)
@@ -837,6 +870,9 @@ class TraefikTUI(App):
 
     def _update_editor(self) -> None:
         """Update the profile editor with the selected profile."""
+        if self._direct_mode:
+            self._update_title_bar()
+            return
         editor = self.query_one("#profile-editor", ProfileEditor)
         selected = self.settings.selected_profile
 
@@ -1365,13 +1401,16 @@ class TraefikTUI(App):
 
     def action_save(self) -> None:
         """Save settings to disk."""
+        if self._direct_mode:
+            self.notify("Settings not saved in direct connection mode")
+            return
         self.settings.save()
         self._dirty = False
         self.notify("Settings saved")
 
     def action_quit(self) -> None:
         """Quit the application."""
-        if self._dirty:
+        if self._dirty and not self._direct_mode:
             self.settings.save()
         self.exit()
 
@@ -1467,7 +1506,27 @@ def main() -> None:
         type=str,
         help="Deep link to a resource (e.g., entrypoint#websecure, middleware#mtls@file, router:tcp#myrouter)",
     )
+    parser.add_argument(
+        "--url",
+        "-u",
+        type=str,
+        help="Direct connection URL (disables Settings tab)",
+    )
+    parser.add_argument(
+        "--username",
+        type=str,
+        help="HTTP basic auth username (requires --url)",
+    )
+    parser.add_argument(
+        "--password",
+        type=str,
+        help="HTTP basic auth password (requires --url)",
+    )
     args = parser.parse_args()
+
+    # Validate auth args require --url
+    if (args.username or args.password) and not args.url:
+        parser.error("--username and --password require --url")
 
     deep_link = None
     if args.link:
@@ -1475,7 +1534,12 @@ def main() -> None:
         if deep_link is None:
             parser.error(f"Invalid link format: {args.link}")
 
-    app = TraefikTUI(deep_link=deep_link)
+    app = TraefikTUI(
+        deep_link=deep_link,
+        direct_url=args.url,
+        direct_username=args.username,
+        direct_password=args.password,
+    )
     app.run()
 
 
