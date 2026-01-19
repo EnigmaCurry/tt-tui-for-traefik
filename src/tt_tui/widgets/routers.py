@@ -249,6 +249,8 @@ class RoutersView(Vertical):
         # Update or add rows
         for router in routers:
             status_text = _status_emoji(router.status)
+            if router.tls:
+                status_text = f"{status_text}🔒"
             entry_points = ", ".join(router.entry_points) if router.entry_points else "-"
             row_data = (
                 router.name,
