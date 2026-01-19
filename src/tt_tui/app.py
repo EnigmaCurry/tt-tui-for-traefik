@@ -278,6 +278,83 @@ class ConfirmDialog(ModalScreen[bool]):
         self.dismiss(False)
 
 
+class InputDialog(ModalScreen[str | None]):
+    """A dialog modal with text input."""
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+    ]
+
+    DEFAULT_CSS = """
+    InputDialog {
+        align: center middle;
+    }
+
+    InputDialog > Vertical {
+        width: 50;
+        height: auto;
+        border: thick $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+
+    InputDialog .dialog-title {
+        text-style: bold;
+        padding-bottom: 1;
+    }
+
+    InputDialog Input {
+        margin-bottom: 1;
+    }
+
+    InputDialog Horizontal {
+        align: center middle;
+        height: auto;
+        padding-top: 1;
+    }
+
+    InputDialog Button {
+        margin: 0 1;
+    }
+    """
+
+    def __init__(self, title: str, initial_value: str = "") -> None:
+        super().__init__()
+        self._title = title
+        self._initial_value = initial_value
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Label(self._title, classes="dialog-title")
+            yield Input(value=self._initial_value, id="input-field")
+            with Horizontal():
+                yield Button("OK", variant="primary", id="ok-btn")
+                yield Button("Cancel", variant="default", id="cancel-btn")
+
+    def on_mount(self) -> None:
+        self.query_one("#input-field", Input).focus()
+
+    @on(Input.Submitted, "#input-field")
+    def on_input_submitted(self) -> None:
+        self._submit()
+
+    @on(Button.Pressed, "#ok-btn")
+    def on_ok(self) -> None:
+        self._submit()
+
+    @on(Button.Pressed, "#cancel-btn")
+    def on_cancel_btn(self) -> None:
+        self.dismiss(None)
+
+    def _submit(self) -> None:
+        value = self.query_one("#input-field", Input).value.strip()
+        if value:
+            self.dismiss(value)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
 @dataclass
 class SearchResult:
     """A search result item."""
@@ -930,18 +1007,32 @@ class TraefikTUI(App):
             handle_delete,
         )
 
+    @on(ProfileList.ProfileRename)
+    def on_profile_rename(self, event: ProfileList.ProfileRename) -> None:
+        """Handle profile rename request."""
+
+        def handle_rename(new_name: str | None) -> None:
+            if new_name and new_name != event.profile_name:
+                if new_name in self.settings.profiles:
+                    self.notify(f"Profile '{new_name}' already exists", severity="error")
+                    return
+                if self.settings.rename_profile(event.profile_name, new_name):
+                    self.settings.save()
+                    self.notify(f"Renamed to '{new_name}'")
+                    self._refresh_profile_list()
+                else:
+                    self.notify("Rename failed", severity="error")
+
+        self.push_screen(
+            InputDialog("Rename Profile", event.profile_name),
+            handle_rename,
+        )
+
     @on(ProfileEditor.ProfileChanged)
     def on_profile_changed(self, event: ProfileEditor.ProfileChanged) -> None:
         """Handle profile data changes."""
         if event.profile_name in self.settings.profiles:
             self.settings.profiles[event.profile_name] = event.profile
-
-            # Check if we need to rename based on URL
-            new_key = self.settings.get_profile_key_from_url(event.profile.url)
-            if new_key and new_key != event.profile_name and new_key not in self.settings.profiles:
-                self.settings.rename_profile(event.profile_name, new_key)
-                self._refresh_profile_list()
-
             self._dirty = True
             # Trigger connection check when URL changes
             self._check_connection_now()

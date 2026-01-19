@@ -3,9 +3,9 @@
 from textual import on
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Vertical
 from textual.message import Message
-from textual.widgets import Button, Label, ListItem, ListView
+from textual.widgets import Label, ListItem, ListView
 
 
 class ProfileList(Vertical):
@@ -13,6 +13,7 @@ class ProfileList(Vertical):
 
     BINDINGS = [
         Binding("c", "create_profile", "Create Profile"),
+        Binding("r", "rename_profile", "Rename Profile"),
         Binding("delete", "delete_profile", "Delete Profile"),
     ]
 
@@ -52,18 +53,6 @@ class ProfileList(Vertical):
         text-align: center;
     }
 
-    ProfileList .button-bar {
-        dock: bottom;
-        height: auto;
-        padding: 1;
-        border-top: solid $primary-darken-2;
-        align: center middle;
-    }
-
-    ProfileList .button-bar Button {
-        margin: 0 1;
-        min-width: 10;
-    }
     """
 
     class ProfileSelected(Message):
@@ -83,6 +72,13 @@ class ProfileList(Vertical):
             self.profile_name = profile_name
             super().__init__()
 
+    class ProfileRename(Message):
+        """Message sent when user wants to rename a profile."""
+
+        def __init__(self, profile_name: str) -> None:
+            self.profile_name = profile_name
+            super().__init__()
+
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
         self._profiles: list[str] = []
@@ -91,9 +87,6 @@ class ProfileList(Vertical):
     def compose(self) -> ComposeResult:
         yield Label("Profiles", classes="title")
         yield ListView(id="profile-listview")
-        with Horizontal(classes="button-bar"):
-            yield Button("Create", id="btn-create", variant="success")
-            yield Button("Delete", id="btn-delete", variant="error")
 
     def update_profiles(self, profiles: list[str], selected: str | None = None) -> None:
         """Update the list of profiles."""
@@ -115,26 +108,21 @@ class ProfileList(Vertical):
                 idx = profiles.index(selected)
                 listview.index = idx
 
-    @on(ListView.Selected)
-    def on_listview_selected(self, event: ListView.Selected) -> None:
-        """Handle profile selection."""
+    @on(ListView.Highlighted)
+    def on_listview_highlighted(self, event: ListView.Highlighted) -> None:
+        """Handle profile highlight - automatically selects the profile."""
         idx = event.list_view.index
         if idx is not None and 0 <= idx < len(self._profiles):
             self.post_message(self.ProfileSelected(self._profiles[idx]))
 
-    @on(Button.Pressed, "#btn-create")
-    def on_create_pressed(self) -> None:
-        """Handle create button click."""
-        self.action_create_profile()
-
-    @on(Button.Pressed, "#btn-delete")
-    def on_delete_pressed(self) -> None:
-        """Handle delete button click."""
-        self.action_delete_profile()
-
     def action_create_profile(self) -> None:
         """Create a new profile."""
         self.post_message(self.ProfileCreate())
+
+    def action_rename_profile(self) -> None:
+        """Rename the selected profile."""
+        if self._selected:
+            self.post_message(self.ProfileRename(self._selected))
 
     def action_delete_profile(self) -> None:
         """Delete the selected profile."""
