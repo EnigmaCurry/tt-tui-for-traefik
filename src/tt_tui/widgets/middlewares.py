@@ -238,9 +238,10 @@ class MiddlewaresView(Vertical):
                 middleware.provider,
             )
 
-            if middleware.name not in existing_keys:
-                # Add new row
-                table.add_row(*row_data, key=middleware.name)
+            if middleware.name in existing_keys:
+                # Update existing row by removing and re-adding
+                table.remove_row(middleware.name)
+            table.add_row(*row_data, key=middleware.name)
 
         # Restore cursor position if possible
         if current_key and str(current_key) in new_keys:
@@ -302,8 +303,20 @@ class MiddlewaresView(Vertical):
         if event.row_key is None:
             return
 
+        # Determine middleware type from the table that fired the event
+        table_id = event.control.id
+        if table_id == "http-mw-table":
+            middleware_type = "http"
+        elif table_id == "tcp-mw-table":
+            middleware_type = "tcp"
+        else:
+            return
+
+        # Only handle events from the active tab's table
+        if middleware_type != self._get_active_middleware_type():
+            return
+
         middleware_name = str(event.row_key.value)
-        middleware_type = self._get_active_middleware_type()
         self.post_message(self.MiddlewareSelected(middleware_name, middleware_type))
 
     async def show_detail(self, detail: MiddlewareDetail) -> None:

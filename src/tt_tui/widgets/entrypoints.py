@@ -147,6 +147,9 @@ class EntrypointsView(Vertical):
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
         self._entrypoints: list[Entrypoint] = []
+        self._router_stats: dict[str, dict[str, int]] = {}
+        self._service_stats: dict[str, dict[str, int]] = {}
+        self._middleware_stats: dict[str, dict[str, int]] = {}
         self._detail_pane: EntrypointDetailPane | None = None
         self._selected_entrypoint: str | None = None
 
@@ -156,13 +159,38 @@ class EntrypointsView(Vertical):
     def on_mount(self) -> None:
         """Set up the data table."""
         table = self.query_one("#entrypoints-table", DataTable)
-        table.add_columns("Name", "Address", "Protocol")
+        table.add_columns("Name", "Address", "Protocol", "Routers", "Services", "Middlewares")
         table.cursor_type = "row"
 
-    def update_entrypoints(self, entrypoints: list[Entrypoint]) -> None:
+    def update_entrypoints(
+        self,
+        entrypoints: list[Entrypoint],
+        router_stats: dict[str, dict[str, int]] | None = None,
+        service_stats: dict[str, dict[str, int]] | None = None,
+        middleware_stats: dict[str, dict[str, int]] | None = None,
+    ) -> None:
         """Update the entrypoints table."""
         self._entrypoints = entrypoints
+        self._router_stats = router_stats or {}
+        self._service_stats = service_stats or {}
+        self._middleware_stats = middleware_stats or {}
         self._update_table(entrypoints)
+
+    def _format_stats(self, stats: dict[str, int]) -> str:
+        """Format stats for display with color indicators."""
+        enabled = stats.get("enabled", 0)
+        disabled = stats.get("disabled", 0)
+        warning = stats.get("warning", 0)
+
+        parts = []
+        if enabled > 0:
+            parts.append(f"[green]{enabled}✓[/]")
+        if warning > 0:
+            parts.append(f"[yellow]{warning}⚠[/]")
+        if disabled > 0:
+            parts.append(f"[red]{disabled}✗[/]")
+
+        return " ".join(parts) if parts else "-"
 
     def _update_table(self, entrypoints: list[Entrypoint]) -> None:
         """Update the table with data, preserving selection."""
@@ -186,15 +214,23 @@ class EntrypointsView(Vertical):
 
         # Update or add rows
         for entrypoint in entrypoints:
+            router_info = self._format_stats(self._router_stats.get(entrypoint.name, {}))
+            service_info = self._format_stats(self._service_stats.get(entrypoint.name, {}))
+            middleware_info = self._format_stats(self._middleware_stats.get(entrypoint.name, {}))
             row_data = (
                 entrypoint.name,
                 entrypoint.address,
                 entrypoint.protocol or "-",
+                router_info,
+                service_info,
+                middleware_info,
             )
 
-            if entrypoint.name not in existing_keys:
-                # Add new row
-                table.add_row(*row_data, key=entrypoint.name)
+            if entrypoint.name in existing_keys:
+                # Update existing row by removing and re-adding
+                table.remove_row(entrypoint.name)
+            # Add row
+            table.add_row(*row_data, key=entrypoint.name)
 
         # Restore cursor position if possible
         if current_key and str(current_key) in new_keys:

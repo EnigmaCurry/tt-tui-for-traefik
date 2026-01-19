@@ -152,9 +152,15 @@ class TraefikTimeoutError(TraefikAPIError):
 class TraefikHTTPError(TraefikAPIError):
     """HTTP error response."""
 
-    def __init__(self, status_code: int, message: str = ""):
+    def __init__(self, status_code: int, url: str = "", message: str = ""):
         self.status_code = status_code
-        super().__init__(f"HTTP {status_code}: {message}" if message else f"HTTP {status_code}")
+        self.url = url
+        if url:
+            super().__init__(f"HTTP {status_code}: {url}")
+        elif message:
+            super().__init__(f"HTTP {status_code}: {message}")
+        else:
+            super().__init__(f"HTTP {status_code}")
 
 
 class TraefikAPI:
@@ -187,7 +193,7 @@ class TraefikAPI:
         except httpx.RemoteProtocolError as e:
             raise TraefikConnectionError("Server disconnected") from e
         except httpx.HTTPStatusError as e:
-            raise TraefikHTTPError(e.response.status_code) from e
+            raise TraefikHTTPError(e.response.status_code, url=url) from e
         except httpx.RequestError as e:
             # Catch any other httpx request errors
             raise TraefikConnectionError(str(e)) from e

@@ -242,9 +242,10 @@ class ServicesView(Vertical):
                 servers_count,
             )
 
-            if service.name not in existing_keys:
-                # Add new row
-                table.add_row(*row_data, key=service.name)
+            if service.name in existing_keys:
+                # Update existing row by removing and re-adding
+                table.remove_row(service.name)
+            table.add_row(*row_data, key=service.name)
 
         # Restore cursor position if possible
         if current_key and str(current_key) in new_keys:
@@ -309,8 +310,22 @@ class ServicesView(Vertical):
         if event.row_key is None:
             return
 
+        # Determine service type from the table that fired the event
+        table_id = event.control.id
+        if table_id == "http-svc-table":
+            service_type = "http"
+        elif table_id == "tcp-svc-table":
+            service_type = "tcp"
+        elif table_id == "udp-svc-table":
+            service_type = "udp"
+        else:
+            return
+
+        # Only handle events from the active tab's table
+        if service_type != self._get_active_service_type():
+            return
+
         service_name = str(event.row_key.value)
-        service_type = self._get_active_service_type()
         self.post_message(self.ServiceSelected(service_name, service_type))
 
     async def show_detail(self, detail: ServiceDetail) -> None:

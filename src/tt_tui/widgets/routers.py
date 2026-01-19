@@ -261,16 +261,9 @@ class RoutersView(Vertical):
             )
 
             if router.name in existing_keys:
-                # Update existing row - just update if data changed
-                try:
-                    row_key = table.get_row_key(router.name)
-                    # For simplicity, we skip updating in place since DataTable
-                    # doesn't have a simple update_row method
-                except Exception:
-                    pass
-            else:
-                # Add new row
-                table.add_row(*row_data, key=router.name)
+                # Update existing row by removing and re-adding
+                table.remove_row(router.name)
+            table.add_row(*row_data, key=router.name)
 
         # Restore cursor position if possible
         if current_key and str(current_key) in new_keys:
@@ -336,8 +329,22 @@ class RoutersView(Vertical):
         if event.row_key is None:
             return
 
+        # Determine router type from the table that fired the event
+        table_id = event.control.id
+        if table_id == "http-table":
+            router_type = "http"
+        elif table_id == "tcp-table":
+            router_type = "tcp"
+        elif table_id == "udp-table":
+            router_type = "udp"
+        else:
+            return
+
+        # Only handle events from the active tab's table
+        if router_type != self._get_active_router_type():
+            return
+
         router_name = str(event.row_key.value)
-        router_type = self._get_active_router_type()
         self.post_message(self.RouterSelected(router_name, router_type))
 
     async def show_detail(self, detail: RouterDetail) -> None:

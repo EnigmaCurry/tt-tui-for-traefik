@@ -13,7 +13,7 @@ from textual.reactive import reactive
 from textual.screen import ModalScreen
 from textual.widgets import Button, DataTable, Footer, Input, Label, Static, Tab, TabbedContent, TabPane, Tabs
 
-from .api import TraefikAPI, TraefikAPIError
+from .api import Middleware, Service, TraefikAPI, TraefikAPIError
 from .models import ConnectionStatus, Profile, ProfileRuntime, Settings
 from .monitor import check_connection
 from .widgets import EntrypointsView, MiddlewaresView, NavigateLink, ProfileEditor, ProfileList, RoutersView, ServicesView, StatusBar
@@ -1070,13 +1070,23 @@ class TraefikTUI(App):
 
             # Re-fetch detail if it was open
             if had_detail_open and selected_router and selected_router_type:
-                if selected_router_type == "tcp":
-                    detail = await api.get_tcp_router(selected_router)
-                elif selected_router_type == "udp":
-                    detail = await api.get_udp_router(selected_router)
+                # Use current active type - stored type may be stale
+                active_type = routers_view._get_active_router_type()
+                # Only refresh if still on the same protocol tab
+                if active_type != selected_router_type:
+                    await routers_view._close_detail_pane()
                 else:
-                    detail = await api.get_http_router(selected_router)
-                await routers_view.show_detail(detail)
+                    try:
+                        if active_type == "tcp":
+                            detail = await api.get_tcp_router(selected_router)
+                        elif active_type == "udp":
+                            detail = await api.get_udp_router(selected_router)
+                        else:
+                            detail = await api.get_http_router(selected_router)
+                        await routers_view.show_detail(detail)
+                    except TraefikAPIError:
+                        # Router no longer exists, close detail pane
+                        await routers_view._close_detail_pane()
 
             # Handle deep link navigation
             await self._handle_deep_link_navigation("router")
@@ -1155,13 +1165,23 @@ class TraefikTUI(App):
 
             # Re-fetch detail if it was open
             if had_detail_open and selected_service and selected_service_type:
-                if selected_service_type == "tcp":
-                    detail = await api.get_tcp_service(selected_service)
-                elif selected_service_type == "udp":
-                    detail = await api.get_udp_service(selected_service)
+                # Use current active type - stored type may be stale
+                active_type = services_view._get_active_service_type()
+                # Only refresh if still on the same protocol tab
+                if active_type != selected_service_type:
+                    await services_view._close_detail_pane()
                 else:
-                    detail = await api.get_http_service(selected_service)
-                await services_view.show_detail(detail)
+                    try:
+                        if active_type == "tcp":
+                            detail = await api.get_tcp_service(selected_service)
+                        elif active_type == "udp":
+                            detail = await api.get_udp_service(selected_service)
+                        else:
+                            detail = await api.get_http_service(selected_service)
+                        await services_view.show_detail(detail)
+                    except TraefikAPIError:
+                        # Service no longer exists, close detail pane
+                        await services_view._close_detail_pane()
 
             # Handle deep link navigation
             await self._handle_deep_link_navigation("service")
@@ -1230,14 +1250,110 @@ class TraefikTUI(App):
             api = TraefikAPI(profile.url, profile.basic_auth)
             entrypoints = await api.get_entrypoints()
 
-            entrypoints_view.update_entrypoints(entrypoints)
+            # Fetch routers, services, middlewares to build usage stats per entrypoint
+            http_routers = await api.get_http_routers()
+            tcp_routers = await api.get_tcp_routers()
+            udp_routers = await api.get_udp_routers()
+            all_routers = http_routers + tcp_routers + udp_routers
+
+            # Build router stats: {entrypoint_name: {enabled: N, disabled: N, warning: N}}
+            router_stats: dict[str, dict[str, int]] = {}
+            # Also track which services/middlewares are used by routers on each entrypoint
+            ep_services: dict[str, set[str]] = {}
+            ep_middlewares: dict[str, set[str]] = {}
+
+            for router in all_routers:
+                for ep_name in router.entry_points or []:
+                    if ep_name not in router_stats:
+                        router_stats[ep_name] = {"enabled": 0, "disabled": 0, "warning": 0}
+                        ep_services[ep_name] = set()
+                        ep_middlewares[ep_name] = set()
+                    status = (router.status or "").lower()
+                    if status == "enabled":
+                        router_stats[ep_name]["enabled"] += 1
+                    elif status == "disabled":
+                        router_stats[ep_name]["disabled"] += 1
+                    elif status == "warning":
+                        router_stats[ep_name]["warning"] += 1
+                    # Track services and middlewares used by this router
+                    if router.service:
+                        ep_services[ep_name].add(router.service)
+                    if router.middlewares:
+                        ep_middlewares[ep_name].update(router.middlewares)
+
+            # Fetch services and build stats
+            http_services = await api.get_http_services()
+            tcp_services = await api.get_tcp_services()
+            udp_services = await api.get_udp_services()
+            all_services_list = http_services + tcp_services + udp_services
+            # Build lookup by full name and by base name (without @provider)
+            all_services: dict[str, Service] = {}
+            for s in all_services_list:
+                all_services[s.name] = s
+                base_name = s.name.split("@")[0] if "@" in s.name else s.name
+                if base_name not in all_services:
+                    all_services[base_name] = s
+
+            service_stats: dict[str, dict[str, int]] = {}
+            for ep_name, svc_names in ep_services.items():
+                service_stats[ep_name] = {"enabled": 0, "disabled": 0, "warning": 0}
+                for svc_name in svc_names:
+                    # Try exact match first, then base name match
+                    svc = all_services.get(svc_name)
+                    if not svc:
+                        base_name = svc_name.split("@")[0] if "@" in svc_name else svc_name
+                        svc = all_services.get(base_name)
+                    if svc:
+                        status = (svc.status or "").lower()
+                        if status == "enabled":
+                            service_stats[ep_name]["enabled"] += 1
+                        elif status == "disabled":
+                            service_stats[ep_name]["disabled"] += 1
+                        elif status == "warning":
+                            service_stats[ep_name]["warning"] += 1
+
+            # Fetch middlewares and build stats
+            http_middlewares = await api.get_http_middlewares()
+            tcp_middlewares = await api.get_tcp_middlewares()
+            all_middlewares_list = http_middlewares + tcp_middlewares
+            # Build lookup by full name and by base name (without @provider)
+            all_middlewares: dict[str, Middleware] = {}
+            for m in all_middlewares_list:
+                all_middlewares[m.name] = m
+                base_name = m.name.split("@")[0] if "@" in m.name else m.name
+                if base_name not in all_middlewares:
+                    all_middlewares[base_name] = m
+
+            middleware_stats: dict[str, dict[str, int]] = {}
+            for ep_name, mw_names in ep_middlewares.items():
+                middleware_stats[ep_name] = {"enabled": 0, "disabled": 0, "warning": 0}
+                for mw_name in mw_names:
+                    # Try exact match first, then base name match
+                    mw = all_middlewares.get(mw_name)
+                    if not mw:
+                        base_name = mw_name.split("@")[0] if "@" in mw_name else mw_name
+                        mw = all_middlewares.get(base_name)
+                    if mw:
+                        status = (mw.status or "").lower()
+                        if status == "enabled":
+                            middleware_stats[ep_name]["enabled"] += 1
+                        elif status == "disabled":
+                            middleware_stats[ep_name]["disabled"] += 1
+                        elif status == "warning":
+                            middleware_stats[ep_name]["warning"] += 1
+
+            entrypoints_view.update_entrypoints(entrypoints, router_stats, service_stats, middleware_stats)
             self._set_api_status(ApiStatus.SUCCESS)
             self._consecutive_errors = 0
 
             # Re-fetch detail if it was open
             if had_detail_open and selected_entrypoint:
-                detail = await api.get_entrypoint(selected_entrypoint)
-                await entrypoints_view.show_detail(detail)
+                try:
+                    detail = await api.get_entrypoint(selected_entrypoint)
+                    await entrypoints_view.show_detail(detail)
+                except TraefikAPIError:
+                    # Entrypoint no longer exists, close detail pane
+                    await entrypoints_view._close_detail_pane()
 
             # Handle deep link navigation
             await self._handle_deep_link_navigation("entrypoint")
@@ -1309,11 +1425,21 @@ class TraefikTUI(App):
 
             # Re-fetch detail if it was open
             if had_detail_open and selected_middleware and selected_middleware_type:
-                if selected_middleware_type == "tcp":
-                    detail = await api.get_tcp_middleware(selected_middleware)
+                # Use current active type - stored type may be stale
+                active_type = middlewares_view._get_active_middleware_type()
+                # Only refresh if still on the same protocol tab
+                if active_type != selected_middleware_type:
+                    await middlewares_view._close_detail_pane()
                 else:
-                    detail = await api.get_http_middleware(selected_middleware)
-                await middlewares_view.show_detail(detail)
+                    try:
+                        if active_type == "tcp":
+                            detail = await api.get_tcp_middleware(selected_middleware)
+                        else:
+                            detail = await api.get_http_middleware(selected_middleware)
+                        await middlewares_view.show_detail(detail)
+                    except TraefikAPIError:
+                        # Middleware no longer exists, close detail pane
+                        await middlewares_view._close_detail_pane()
 
             # Handle deep link navigation
             await self._handle_deep_link_navigation("middleware")
