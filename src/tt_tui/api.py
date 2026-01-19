@@ -17,7 +17,7 @@ class TraefikVersion:
 
 @dataclass
 class Router:
-    """A Traefik router."""
+    """A Traefik router (summary)."""
 
     name: str
     provider: str
@@ -28,6 +28,56 @@ class Router:
     middlewares: list[str] | None = None
     tls: bool = False
     priority: int = 0
+
+
+@dataclass
+class RouterDetail:
+    """Detailed Traefik router information."""
+
+    name: str
+    provider: str
+    status: str
+    rule: str
+    service: str
+    entry_points: list[str]
+    middlewares: list[str] | None = None
+    tls: dict | None = None
+    priority: int = 0
+    using: list[str] | None = None
+    error: list[str] | None = None
+    # Raw data for any extra fields
+    raw: dict | None = None
+
+
+@dataclass
+class Service:
+    """A Traefik service (summary)."""
+
+    name: str
+    provider: str
+    status: str
+    type: str
+    servers_status: dict[str, str] | None = None
+
+
+@dataclass
+class ServiceDetail:
+    """Detailed Traefik service information."""
+
+    name: str
+    provider: str
+    status: str
+    type: str
+    servers_status: dict[str, str] | None = None
+    load_balancer: dict | None = None
+    weighted: dict | None = None
+    mirroring: dict | None = None
+    failover: dict | None = None
+    using: list[str] | None = None
+    used_by: list[str] | None = None
+    error: list[str] | None = None
+    # Raw data for any extra fields
+    raw: dict | None = None
 
 
 class TraefikAPIError(Exception):
@@ -113,6 +163,51 @@ class TraefikAPI:
         data = await self._get("/api/udp/routers")
         return [self._parse_router(r) for r in data]
 
+    async def get_http_router(self, name: str) -> RouterDetail:
+        """Get details for a specific HTTP router."""
+        data = await self._get(f"/api/http/routers/{name}")
+        return self._parse_router_detail(data)
+
+    async def get_tcp_router(self, name: str) -> RouterDetail:
+        """Get details for a specific TCP router."""
+        data = await self._get(f"/api/tcp/routers/{name}")
+        return self._parse_router_detail(data)
+
+    async def get_udp_router(self, name: str) -> RouterDetail:
+        """Get details for a specific UDP router."""
+        data = await self._get(f"/api/udp/routers/{name}")
+        return self._parse_router_detail(data)
+
+    async def get_http_services(self) -> list[Service]:
+        """Get all HTTP services."""
+        data = await self._get("/api/http/services")
+        return [self._parse_service(s) for s in data]
+
+    async def get_tcp_services(self) -> list[Service]:
+        """Get all TCP services."""
+        data = await self._get("/api/tcp/services")
+        return [self._parse_service(s) for s in data]
+
+    async def get_udp_services(self) -> list[Service]:
+        """Get all UDP services."""
+        data = await self._get("/api/udp/services")
+        return [self._parse_service(s) for s in data]
+
+    async def get_http_service(self, name: str) -> ServiceDetail:
+        """Get details for a specific HTTP service."""
+        data = await self._get(f"/api/http/services/{name}")
+        return self._parse_service_detail(data)
+
+    async def get_tcp_service(self, name: str) -> ServiceDetail:
+        """Get details for a specific TCP service."""
+        data = await self._get(f"/api/tcp/services/{name}")
+        return self._parse_service_detail(data)
+
+    async def get_udp_service(self, name: str) -> ServiceDetail:
+        """Get details for a specific UDP service."""
+        data = await self._get(f"/api/udp/services/{name}")
+        return self._parse_service_detail(data)
+
     def _parse_router(self, data: dict) -> Router:
         """Parse router data from API response."""
         return Router(
@@ -125,4 +220,49 @@ class TraefikAPI:
             middlewares=data.get("middlewares"),
             tls=data.get("tls") is not None,
             priority=data.get("priority", 0),
+        )
+
+    def _parse_router_detail(self, data: dict) -> RouterDetail:
+        """Parse detailed router data from API response."""
+        return RouterDetail(
+            name=data.get("name", ""),
+            provider=data.get("provider", ""),
+            status=data.get("status", "unknown"),
+            rule=data.get("rule", ""),
+            service=data.get("service", ""),
+            entry_points=data.get("entryPoints", []),
+            middlewares=data.get("middlewares"),
+            tls=data.get("tls"),
+            priority=data.get("priority", 0),
+            using=data.get("using"),
+            error=data.get("error"),
+            raw=data,
+        )
+
+    def _parse_service(self, data: dict) -> Service:
+        """Parse service data from API response."""
+        return Service(
+            name=data.get("name", ""),
+            provider=data.get("provider", ""),
+            status=data.get("status", "unknown"),
+            type=data.get("type", ""),
+            servers_status=data.get("serverStatus"),
+        )
+
+    def _parse_service_detail(self, data: dict) -> ServiceDetail:
+        """Parse detailed service data from API response."""
+        return ServiceDetail(
+            name=data.get("name", ""),
+            provider=data.get("provider", ""),
+            status=data.get("status", "unknown"),
+            type=data.get("type", ""),
+            servers_status=data.get("serverStatus"),
+            load_balancer=data.get("loadBalancer"),
+            weighted=data.get("weighted"),
+            mirroring=data.get("mirroring"),
+            failover=data.get("failover"),
+            using=data.get("using"),
+            used_by=data.get("usedBy"),
+            error=data.get("error"),
+            raw=data,
         )

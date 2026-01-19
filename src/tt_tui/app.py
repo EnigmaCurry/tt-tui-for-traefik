@@ -1,16 +1,68 @@
 """Main TT TUI application."""
 
+from enum import Enum
+
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
+from textual.reactive import reactive
 from textual.screen import ModalScreen
-from textual.widgets import Button, Footer, Header, Label, Static, TabbedContent, TabPane
+from textual.widgets import Button, Footer, Header, Input, Label, Static, Tab, TabbedContent, TabPane, Tabs
 
 from .api import TraefikAPI, TraefikAPIError
 from .models import ConnectionStatus, Profile, ProfileRuntime, Settings
 from .monitor import check_connection
-from .widgets import ProfileEditor, ProfileList, RoutersView, StatusBar
+from .widgets import ProfileEditor, ProfileList, RoutersView, ServicesView, StatusBar
+
+
+class ApiStatus(str, Enum):
+    """Status of API calls."""
+
+    IDLE = "idle"
+    LOADING = "loading"
+    SUCCESS = "success"
+    ERROR = "error"
+
+
+class StatusIndicator(Static):
+    """A status indicator showing API call status."""
+
+    DEFAULT_CSS = """
+    StatusIndicator {
+        dock: top;
+        width: 3;
+        height: 1;
+        background: $primary;
+    }
+
+    StatusIndicator.idle {
+        color: #6c7086;
+    }
+
+    StatusIndicator.loading {
+        color: white;
+    }
+
+    StatusIndicator.success {
+        color: #a6e3a1;
+    }
+
+    StatusIndicator.error {
+        color: #f38ba8;
+    }
+    """
+
+    status: reactive[ApiStatus] = reactive(ApiStatus.IDLE)
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(" ● ", **kwargs)
+        self.add_class("idle")
+
+    def watch_status(self, status: ApiStatus) -> None:
+        """Update appearance when status changes."""
+        self.remove_class("loading", "success", "error", "idle")
+        self.add_class(status.value)
 
 
 class ConfirmDialog(ModalScreen[bool]):
@@ -92,6 +144,8 @@ class TraefikTUI(App):
     BINDINGS = [
         Binding("q", "quit", "Quit"),
         Binding("ctrl+s", "save", "Save"),
+        Binding("escape", "escape_context", "Back", show=False),
+        Binding("enter", "enter_context", "Enter", show=False),
     ]
 
     CSS = """
@@ -117,6 +171,11 @@ class TraefikTUI(App):
     Header {
         background: $primary;
     }
+
+    HeaderTitle {
+        width: 1fr;
+    }
+
 
     Footer {
         background: $surface;
@@ -177,6 +236,7 @@ class TraefikTUI(App):
         text-style: bold;
         padding-bottom: 1;
     }
+
     """
 
     def __init__(self) -> None:
@@ -188,14 +248,12 @@ class TraefikTUI(App):
 
     def compose(self) -> ComposeResult:
         yield Header()
+        yield StatusIndicator(id="status-indicator")
         with TabbedContent(initial=self.settings.active_tab):
             with TabPane("Routers", id="routers"):
                 yield RoutersView(id="routers-view")
             with TabPane("Services", id="services"):
-                with Vertical(classes="placeholder"):
-                    yield Static("Services", classes="placeholder-title")
-                    yield Static("View backend services and load balancers")
-                    yield Static("(Coming soon)")
+                yield ServicesView(id="services-view")
             with TabPane("Middleware", id="middleware"):
                 with Vertical(classes="placeholder"):
                     yield Static("Middleware", classes="placeholder-title")
@@ -211,9 +269,21 @@ class TraefikTUI(App):
         """Initialize the app after mounting."""
         self._refresh_profile_list()
         self._start_monitor()
-        # Refresh routers if starting on routers tab
-        if self.settings.active_tab == "routers":
+        # Initial data refresh
+        self._refresh_current_tab()
+
+    def _set_api_status(self, status: ApiStatus) -> None:
+        """Update the API status indicator."""
+        indicator = self.query_one("#status-indicator", StatusIndicator)
+        indicator.status = status
+
+    def _refresh_current_tab(self) -> None:
+        """Refresh data for the currently active tab."""
+        active_tab = self.settings.active_tab
+        if active_tab == "routers":
             self._refresh_routers()
+        elif active_tab == "services":
+            self._refresh_services()
 
     def _refresh_profile_list(self) -> None:
         """Refresh the profile list widget."""
@@ -239,12 +309,11 @@ class TraefikTUI(App):
     @on(TabbedContent.TabActivated)
     def on_tab_activated(self, event: TabbedContent.TabActivated) -> None:
         """Handle tab changes."""
-        self.settings.active_tab = event.pane.id or "settings"
-        self._dirty = True
-
-        # Refresh routers when switching to routers tab
-        if event.pane.id == "routers":
-            self._refresh_routers()
+        # Only handle main app tabs, not sub-tabs
+        if event.pane.id in ("routers", "services", "middleware", "settings"):
+            self.settings.active_tab = event.pane.id
+            self._dirty = True
+            self._refresh_current_tab()
 
     @on(ProfileList.ProfileSelected)
     def on_profile_selected(self, event: ProfileList.ProfileSelected) -> None:
@@ -255,9 +324,8 @@ class TraefikTUI(App):
             self._refresh_profile_list()
             # Trigger an immediate connection check
             self._check_connection_now()
-            # Refresh routers if on routers tab
-            if self.settings.active_tab == "routers":
-                self._refresh_routers()
+            # Refresh current tab data
+            self._refresh_current_tab()
 
     @on(ProfileList.ProfileCreate)
     def on_profile_create(self, event: ProfileList.ProfileCreate) -> None:
@@ -309,7 +377,12 @@ class TraefikTUI(App):
             return
 
         routers_view = self.query_one("#routers-view", RoutersView)
-        routers_view.show_loading()
+
+        # Remember if detail pane was open and which router
+        had_detail_open = routers_view.has_detail_open()
+        selected_router, selected_router_type = routers_view.get_selected_router()
+
+        self._set_api_status(ApiStatus.LOADING)
 
         try:
             api = TraefikAPI(profile.url, profile.basic_auth)
@@ -320,8 +393,133 @@ class TraefikTUI(App):
             routers_view.update_http_routers(http_routers)
             routers_view.update_tcp_routers(tcp_routers)
             routers_view.update_udp_routers(udp_routers)
+            self._set_api_status(ApiStatus.SUCCESS)
+
+            # Re-fetch detail if it was open
+            if had_detail_open and selected_router and selected_router_type:
+                if selected_router_type == "tcp":
+                    detail = await api.get_tcp_router(selected_router)
+                elif selected_router_type == "udp":
+                    detail = await api.get_udp_router(selected_router)
+                else:
+                    detail = await api.get_http_router(selected_router)
+                await routers_view.show_detail(detail)
+
         except TraefikAPIError as e:
             routers_view.show_error(str(e))
+            self._set_api_status(ApiStatus.ERROR)
+
+    @on(RoutersView.RouterSelected)
+    def on_router_selected(self, event: RoutersView.RouterSelected) -> None:
+        """Handle router selection for detail view."""
+        self._fetch_router_detail(event.router_name, event.router_type)
+
+    @work(exclusive=True, group="router-detail")
+    async def _fetch_router_detail(self, router_name: str, router_type: str) -> None:
+        """Fetch and display router detail."""
+        selected = self.settings.selected_profile
+        if not selected or selected not in self.settings.profiles:
+            return
+
+        profile = self.settings.profiles[selected]
+        if not profile.url:
+            return
+
+        self._set_api_status(ApiStatus.LOADING)
+
+        try:
+            api = TraefikAPI(profile.url, profile.basic_auth)
+            if router_type == "tcp":
+                detail = await api.get_tcp_router(router_name)
+            elif router_type == "udp":
+                detail = await api.get_udp_router(router_name)
+            else:
+                detail = await api.get_http_router(router_name)
+
+            routers_view = self.query_one("#routers-view", RoutersView)
+            await routers_view.show_detail(detail)
+            self._set_api_status(ApiStatus.SUCCESS)
+        except TraefikAPIError as e:
+            self.notify(f"Failed to fetch router details: {e}", severity="error")
+            self._set_api_status(ApiStatus.ERROR)
+
+    @work(exclusive=True, group="services")
+    async def _refresh_services(self) -> None:
+        """Fetch and display services from the selected profile."""
+        selected = self.settings.selected_profile
+        if not selected or selected not in self.settings.profiles:
+            return
+
+        profile = self.settings.profiles[selected]
+        if not profile.url:
+            return
+
+        services_view = self.query_one("#services-view", ServicesView)
+
+        # Remember if detail pane was open and which service
+        had_detail_open = services_view.has_detail_open()
+        selected_service, selected_service_type = services_view.get_selected_service()
+
+        self._set_api_status(ApiStatus.LOADING)
+
+        try:
+            api = TraefikAPI(profile.url, profile.basic_auth)
+            http_services = await api.get_http_services()
+            tcp_services = await api.get_tcp_services()
+            udp_services = await api.get_udp_services()
+
+            services_view.update_http_services(http_services)
+            services_view.update_tcp_services(tcp_services)
+            services_view.update_udp_services(udp_services)
+            self._set_api_status(ApiStatus.SUCCESS)
+
+            # Re-fetch detail if it was open
+            if had_detail_open and selected_service and selected_service_type:
+                if selected_service_type == "tcp":
+                    detail = await api.get_tcp_service(selected_service)
+                elif selected_service_type == "udp":
+                    detail = await api.get_udp_service(selected_service)
+                else:
+                    detail = await api.get_http_service(selected_service)
+                await services_view.show_detail(detail)
+
+        except TraefikAPIError as e:
+            services_view.show_error(str(e))
+            self._set_api_status(ApiStatus.ERROR)
+
+    @on(ServicesView.ServiceSelected)
+    def on_service_selected(self, event: ServicesView.ServiceSelected) -> None:
+        """Handle service selection for detail view."""
+        self._fetch_service_detail(event.service_name, event.service_type)
+
+    @work(exclusive=True, group="service-detail")
+    async def _fetch_service_detail(self, service_name: str, service_type: str) -> None:
+        """Fetch and display service detail."""
+        selected = self.settings.selected_profile
+        if not selected or selected not in self.settings.profiles:
+            return
+
+        profile = self.settings.profiles[selected]
+        if not profile.url:
+            return
+
+        self._set_api_status(ApiStatus.LOADING)
+
+        try:
+            api = TraefikAPI(profile.url, profile.basic_auth)
+            if service_type == "tcp":
+                detail = await api.get_tcp_service(service_name)
+            elif service_type == "udp":
+                detail = await api.get_udp_service(service_name)
+            else:
+                detail = await api.get_http_service(service_name)
+
+            services_view = self.query_one("#services-view", ServicesView)
+            await services_view.show_detail(detail)
+            self._set_api_status(ApiStatus.SUCCESS)
+        except TraefikAPIError as e:
+            self.notify(f"Failed to fetch service details: {e}", severity="error")
+            self._set_api_status(ApiStatus.ERROR)
 
     @work(exclusive=True, group="monitor")
     async def _check_connection_now(self) -> None:
@@ -337,18 +535,24 @@ class TraefikTUI(App):
         # Show connecting status
         self._runtime[selected] = ProfileRuntime(status=ConnectionStatus.CONNECTING)
         self._update_editor()
+        self._set_api_status(ApiStatus.LOADING)
 
         # Check the connection
         runtime = await check_connection(profile.url, profile.basic_auth)
         self._runtime[selected] = runtime
         self._update_editor()
 
+        if runtime.status == ConnectionStatus.CONNECTED:
+            self._set_api_status(ApiStatus.SUCCESS)
+        else:
+            self._set_api_status(ApiStatus.ERROR)
+
     def _start_monitor(self) -> None:
         """Start the background connection monitor."""
         self.set_interval(self._monitor_interval, self._monitor_tick)
 
     async def _monitor_tick(self) -> None:
-        """Periodic tick for the connection monitor."""
+        """Periodic tick for data refresh."""
         selected = self.settings.selected_profile
         if not selected or selected not in self.settings.profiles:
             return
@@ -357,9 +561,86 @@ class TraefikTUI(App):
         if not profile.url:
             return
 
+        # Refresh connection status
         runtime = await check_connection(profile.url, profile.basic_auth)
         self._runtime[selected] = runtime
         self._update_editor()
+
+        # Refresh current tab data
+        self._refresh_current_tab()
+
+    async def action_escape_context(self) -> None:
+        """Handle ESC contextually - dismiss panes, blur inputs, or focus tabs."""
+        # First, check if router detail pane is visible
+        routers_view = self.query_one("#routers-view", RoutersView)
+        if routers_view._detail_pane is not None:
+            await routers_view._close_detail_pane()
+            return
+
+        # Check if services detail pane is visible
+        services_view = self.query_one("#services-view", ServicesView)
+        if services_view._detail_pane is not None:
+            await services_view._close_detail_pane()
+            return
+
+        focused = self.focused
+
+        # If an input is focused, blur it
+        if isinstance(focused, Input):
+            focused.blur()
+            return
+
+        # If on a sub-tab bar, ascend to parent tab bar
+        if isinstance(focused, (Tab, Tabs)):
+            # Find the current TabbedContent, then look for a parent TabbedContent
+            node = focused
+            current_tabbed_content = None
+            while node is not None:
+                if isinstance(node, TabbedContent):
+                    if current_tabbed_content is None:
+                        current_tabbed_content = node
+                    else:
+                        # Found a parent TabbedContent - focus its tabs
+                        tabs = node.query_one(Tabs)
+                        tabs.focus()
+                        return
+                node = node.parent
+            # No parent TabbedContent found, stay on current tabs
+            return
+
+        # Otherwise, focus the nearest parent tab bar
+        if focused is not None:
+            node = focused
+            while node is not None:
+                if isinstance(node, TabbedContent):
+                    tabs = node.query_one(Tabs)
+                    tabs.focus()
+                    return
+                node = node.parent
+
+        # Fallback: focus the main tab bar
+        tabs = self.query_one("Tabs")
+        tabs.focus()
+
+    def action_enter_context(self) -> None:
+        """Handle Enter contextually - descend into tab pane content."""
+        focused = self.focused
+
+        # If a Tab or Tabs is focused, descend into the active pane
+        if isinstance(focused, (Tab, Tabs)):
+            # Find the parent TabbedContent
+            node = focused
+            while node is not None:
+                if isinstance(node, TabbedContent):
+                    # Get the active pane and focus first focusable element
+                    active_pane = node.query_one(f"TabPane#{node.active}", TabPane)
+                    if active_pane:
+                        for widget in active_pane.query("*"):
+                            if widget.can_focus:
+                                widget.focus()
+                                return
+                    return
+                node = node.parent
 
     def action_save(self) -> None:
         """Save settings to disk."""

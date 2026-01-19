@@ -6,7 +6,7 @@ from typing import Self
 
 import tomli
 import tomli_w
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ConnectionStatus(str, Enum):
@@ -40,6 +40,9 @@ class ProfileRuntime(BaseModel):
     error: str | None = None
 
 
+_VALID_TABS = frozenset({"routers", "services", "middleware", "settings"})
+
+
 class Settings(BaseModel):
     """Application settings and profiles."""
 
@@ -47,6 +50,14 @@ class Settings(BaseModel):
     selected_profile: str | None = None
     active_tab: str = "settings"
     profiles: dict[str, Profile] = Field(default_factory=dict)
+
+    @field_validator("active_tab")
+    @classmethod
+    def validate_active_tab(cls, v: str) -> str:
+        """Ensure active_tab is a valid tab ID."""
+        if v not in _VALID_TABS:
+            return "settings"
+        return v
 
     @classmethod
     def get_config_path(cls) -> Path:
@@ -72,7 +83,11 @@ class Settings(BaseModel):
             with open(config_path, "rb") as f:
                 data = tomli.load(f)
             return cls.model_validate(data)
-        return cls()
+        # Create default settings with a default profile
+        return cls(
+            profiles={"default": Profile()},
+            selected_profile="default",
+        )
 
     def save(self) -> None:
         """Save settings to disk."""
