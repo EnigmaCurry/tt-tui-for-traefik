@@ -7,9 +7,10 @@ from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Footer, Header, Label, Static, TabbedContent, TabPane
 
+from .api import TraefikAPI, TraefikAPIError
 from .models import ConnectionStatus, Profile, ProfileRuntime, Settings
 from .monitor import check_connection
-from .widgets import ProfileEditor, ProfileList, StatusBar
+from .widgets import ProfileEditor, ProfileList, RoutersView, StatusBar
 
 
 class ConfirmDialog(ModalScreen[bool]):
@@ -189,10 +190,7 @@ class TraefikTUI(App):
         yield Header()
         with TabbedContent(initial=self.settings.active_tab):
             with TabPane("Routers", id="routers"):
-                with Vertical(classes="placeholder"):
-                    yield Static("Routers", classes="placeholder-title")
-                    yield Static("View and manage HTTP/TCP routers")
-                    yield Static("(Coming soon)")
+                yield RoutersView(id="routers-view")
             with TabPane("Services", id="services"):
                 with Vertical(classes="placeholder"):
                     yield Static("Services", classes="placeholder-title")
@@ -213,6 +211,9 @@ class TraefikTUI(App):
         """Initialize the app after mounting."""
         self._refresh_profile_list()
         self._start_monitor()
+        # Refresh routers if starting on routers tab
+        if self.settings.active_tab == "routers":
+            self._refresh_routers()
 
     def _refresh_profile_list(self) -> None:
         """Refresh the profile list widget."""
@@ -241,6 +242,10 @@ class TraefikTUI(App):
         self.settings.active_tab = event.pane.id or "settings"
         self._dirty = True
 
+        # Refresh routers when switching to routers tab
+        if event.pane.id == "routers":
+            self._refresh_routers()
+
     @on(ProfileList.ProfileSelected)
     def on_profile_selected(self, event: ProfileList.ProfileSelected) -> None:
         """Handle profile selection."""
@@ -250,6 +255,9 @@ class TraefikTUI(App):
             self._refresh_profile_list()
             # Trigger an immediate connection check
             self._check_connection_now()
+            # Refresh routers if on routers tab
+            if self.settings.active_tab == "routers":
+                self._refresh_routers()
 
     @on(ProfileList.ProfileCreate)
     def on_profile_create(self, event: ProfileList.ProfileCreate) -> None:
@@ -288,6 +296,32 @@ class TraefikTUI(App):
             self._dirty = True
             # Trigger connection check when URL changes
             self._check_connection_now()
+
+    @work(exclusive=True, group="routers")
+    async def _refresh_routers(self) -> None:
+        """Fetch and display routers from the selected profile."""
+        selected = self.settings.selected_profile
+        if not selected or selected not in self.settings.profiles:
+            return
+
+        profile = self.settings.profiles[selected]
+        if not profile.url:
+            return
+
+        routers_view = self.query_one("#routers-view", RoutersView)
+        routers_view.show_loading()
+
+        try:
+            api = TraefikAPI(profile.url, profile.basic_auth)
+            http_routers = await api.get_http_routers()
+            tcp_routers = await api.get_tcp_routers()
+            udp_routers = await api.get_udp_routers()
+
+            routers_view.update_http_routers(http_routers)
+            routers_view.update_tcp_routers(tcp_routers)
+            routers_view.update_udp_routers(udp_routers)
+        except TraefikAPIError as e:
+            routers_view.show_error(str(e))
 
     @work(exclusive=True, group="monitor")
     async def _check_connection_now(self) -> None:
