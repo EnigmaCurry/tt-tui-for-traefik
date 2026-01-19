@@ -595,6 +595,18 @@ class TraefikTUI(App):
             ),
         )
 
+    def deliver_screenshot(self, filename: str | None = None, path: str | None = None) -> None:
+        """Save screenshot, creating ~/Downloads if needed."""
+        from pathlib import Path
+
+        if path is None:
+            downloads = Path.home() / "Downloads"
+            downloads.mkdir(parents=True, exist_ok=True)
+            path = str(downloads)
+        saved_path = self.save_screenshot(filename=filename, path=path)
+        if saved_path:
+            self.notify(f"Screenshot saved to {saved_path}")
+
     def compose(self) -> ComposeResult:
         yield TitleBar(id="title-bar")
         with TabbedContent(initial=self.settings.active_tab):
