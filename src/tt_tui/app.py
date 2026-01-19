@@ -1,5 +1,7 @@
 """Main TT TUI application."""
 
+import argparse
+from dataclasses import dataclass
 from enum import Enum
 
 from textual import on, work
@@ -8,7 +10,7 @@ from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
 from textual.reactive import reactive
 from textual.screen import ModalScreen
-from textual.widgets import Button, Footer, Header, Input, Label, Static, Tab, TabbedContent, TabPane, Tabs
+from textual.widgets import Button, DataTable, Footer, Header, Input, Label, Static, Tab, TabbedContent, TabPane, Tabs
 
 from .api import TraefikAPI, TraefikAPIError
 from .models import ConnectionStatus, Profile, ProfileRuntime, Settings
@@ -23,6 +25,38 @@ class ApiStatus(str, Enum):
     LOADING = "loading"
     SUCCESS = "success"
     ERROR = "error"
+
+
+@dataclass
+class DeepLink:
+    """A deep link to a specific resource."""
+
+    resource_type: str  # entrypoint, router, service, middleware
+    resource_name: str
+    protocol: str = "http"  # http, tcp, udp (for routers/services/middlewares)
+
+    @classmethod
+    def parse(cls, link: str) -> "DeepLink | None":
+        """Parse a deep link string like 'entrypoint#websecure' or 'router:tcp#myrouter'."""
+        if "#" not in link:
+            return None
+
+        type_part, name = link.split("#", 1)
+        if not name:
+            return None
+
+        # Check for protocol specifier (e.g., router:tcp)
+        if ":" in type_part:
+            resource_type, protocol = type_part.split(":", 1)
+        else:
+            resource_type = type_part
+            protocol = "http"
+
+        valid_types = {"entrypoint", "router", "service", "middleware"}
+        if resource_type not in valid_types:
+            return None
+
+        return cls(resource_type=resource_type, resource_name=name, protocol=protocol)
 
 
 class StatusIndicator(Static):
@@ -239,7 +273,7 @@ class TraefikTUI(App):
 
     """
 
-    def __init__(self) -> None:
+    def __init__(self, deep_link: DeepLink | None = None) -> None:
         super().__init__()
         self.settings = Settings.load()
         self._runtime: dict[str, ProfileRuntime] = {}
@@ -247,6 +281,7 @@ class TraefikTUI(App):
         self._monitor_interval = 5.0
         self._consecutive_errors = 0
         self._error_threshold = 5
+        self._deep_link = deep_link
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -270,6 +305,21 @@ class TraefikTUI(App):
         """Initialize the app after mounting."""
         self._refresh_profile_list()
         self._start_monitor()
+
+        # Handle deep link - switch to correct tab
+        if self._deep_link:
+            tab_map = {
+                "entrypoint": "entrypoints",
+                "router": "routers",
+                "service": "services",
+                "middleware": "middleware",
+            }
+            target_tab = tab_map.get(self._deep_link.resource_type)
+            if target_tab:
+                self.settings.active_tab = target_tab
+                tabbed_content = self.query_one(TabbedContent)
+                tabbed_content.active = target_tab
+
         # Initial data refresh
         self._refresh_current_tab()
 
@@ -277,6 +327,88 @@ class TraefikTUI(App):
         """Update the API status indicator."""
         indicator = self.query_one("#status-indicator", StatusIndicator)
         indicator.status = status
+
+    def _scroll_table_to_row(self, table: DataTable, row_key: str) -> None:
+        """Scroll the table to show the given row."""
+        if row_key not in table.rows:
+            return
+        row_index = table.get_row_index(row_key)
+        y = sum(row.height for row in table.ordered_rows[:row_index])
+        table.scroll_to(y=y, animate=False, force=True)
+
+    def _select_table_row(self, table: DataTable, row_key: str) -> bool:
+        """Select a row in a DataTable by its key. Returns True if found."""
+        if row_key not in table.rows:
+            return False
+        # Get the visual row index for this key
+        row_index = table.get_row_index(row_key)
+        table.move_cursor(row=row_index, animate=False, scroll=False)
+        return True
+
+    def _select_table_row_with_retry(
+        self, table: DataTable, row_key: str, callback: callable, retries: int = 10
+    ) -> None:
+        """Try to select a row, retrying until found or retries exhausted."""
+        if self._select_table_row(table, row_key):
+            callback()
+            # Scroll after callback (detail pane) has been set up
+            self.set_timer(0.1, lambda: self._scroll_table_to_row(table, row_key))
+        elif retries > 0:
+            self.set_timer(0.05, lambda: self._select_table_row_with_retry(table, row_key, callback, retries - 1))
+        else:
+            # Row not found after retries, still call callback to show detail
+            callback()
+
+    async def _handle_deep_link_navigation(self, resource_type: str) -> None:
+        """Navigate to the deep-linked resource if applicable."""
+        if not self._deep_link or self._deep_link.resource_type != resource_type:
+            return
+
+        link = self._deep_link
+        self._deep_link = None  # Clear so we only navigate once
+
+        if resource_type == "entrypoint":
+            entrypoints_view = self.query_one("#entrypoints-view", EntrypointsView)
+            table = entrypoints_view.query_one("#entrypoints-table", DataTable)
+            self._select_table_row_with_retry(
+                table, link.resource_name, lambda: self._fetch_entrypoint_detail(link.resource_name)
+            )
+        elif resource_type == "router":
+            routers_view = self.query_one("#routers-view", RoutersView)
+            sub_tab_map = {"http": "http-routers", "tcp": "tcp-routers", "udp": "udp-routers"}
+            table_map = {"http": "http-table", "tcp": "tcp-table", "udp": "udp-table"}
+            sub_tab = sub_tab_map.get(link.protocol, "http-routers")
+            table_id = table_map.get(link.protocol, "http-table")
+            tabs = routers_view.query_one("#routers-tabs", TabbedContent)
+            tabs.active = sub_tab
+            table = routers_view.query_one(f"#{table_id}", DataTable)
+            self._select_table_row_with_retry(
+                table, link.resource_name, lambda: self._fetch_router_detail(link.resource_name, link.protocol)
+            )
+        elif resource_type == "service":
+            services_view = self.query_one("#services-view", ServicesView)
+            sub_tab_map = {"http": "http-services", "tcp": "tcp-services", "udp": "udp-services"}
+            table_map = {"http": "http-svc-table", "tcp": "tcp-svc-table", "udp": "udp-svc-table"}
+            sub_tab = sub_tab_map.get(link.protocol, "http-services")
+            table_id = table_map.get(link.protocol, "http-svc-table")
+            tabs = services_view.query_one("#services-tabs", TabbedContent)
+            tabs.active = sub_tab
+            table = services_view.query_one(f"#{table_id}", DataTable)
+            self._select_table_row_with_retry(
+                table, link.resource_name, lambda: self._fetch_service_detail(link.resource_name, link.protocol)
+            )
+        elif resource_type == "middleware":
+            middlewares_view = self.query_one("#middlewares-view", MiddlewaresView)
+            sub_tab_map = {"http": "http-middlewares", "tcp": "tcp-middlewares"}
+            table_map = {"http": "http-mw-table", "tcp": "tcp-mw-table"}
+            sub_tab = sub_tab_map.get(link.protocol, "http-middlewares")
+            table_id = table_map.get(link.protocol, "http-mw-table")
+            tabs = middlewares_view.query_one("#middlewares-tabs", TabbedContent)
+            tabs.active = sub_tab
+            table = middlewares_view.query_one(f"#{table_id}", DataTable)
+            self._select_table_row_with_retry(
+                table, link.resource_name, lambda: self._fetch_middleware_detail(link.resource_name, link.protocol)
+            )
 
     def _refresh_current_tab(self) -> None:
         """Refresh data for the currently active tab."""
@@ -412,6 +544,9 @@ class TraefikTUI(App):
                     detail = await api.get_http_router(selected_router)
                 await routers_view.show_detail(detail)
 
+            # Handle deep link navigation
+            await self._handle_deep_link_navigation("router")
+
         except TraefikAPIError as e:
             self._consecutive_errors += 1
             if self._consecutive_errors >= self._error_threshold:
@@ -494,6 +629,9 @@ class TraefikTUI(App):
                     detail = await api.get_http_service(selected_service)
                 await services_view.show_detail(detail)
 
+            # Handle deep link navigation
+            await self._handle_deep_link_navigation("service")
+
         except TraefikAPIError as e:
             self._consecutive_errors += 1
             if self._consecutive_errors >= self._error_threshold:
@@ -567,6 +705,9 @@ class TraefikTUI(App):
                 detail = await api.get_entrypoint(selected_entrypoint)
                 await entrypoints_view.show_detail(detail)
 
+            # Handle deep link navigation
+            await self._handle_deep_link_navigation("entrypoint")
+
         except TraefikAPIError as e:
             self._consecutive_errors += 1
             if self._consecutive_errors >= self._error_threshold:
@@ -639,6 +780,9 @@ class TraefikTUI(App):
                 else:
                     detail = await api.get_http_middleware(selected_middleware)
                 await middlewares_view.show_detail(detail)
+
+            # Handle deep link navigation
+            await self._handle_deep_link_navigation("middleware")
 
         except TraefikAPIError as e:
             self._consecutive_errors += 1
@@ -827,7 +971,22 @@ class TraefikTUI(App):
 
 def main() -> None:
     """Entry point for the application."""
-    app = TraefikTUI()
+    parser = argparse.ArgumentParser(description="TT TUI for Traefik")
+    parser.add_argument(
+        "--link",
+        "-l",
+        type=str,
+        help="Deep link to a resource (e.g., entrypoint#websecure, middleware#mtls@file, router:tcp#myrouter)",
+    )
+    args = parser.parse_args()
+
+    deep_link = None
+    if args.link:
+        deep_link = DeepLink.parse(args.link)
+        if deep_link is None:
+            parser.error(f"Invalid link format: {args.link}")
+
+    app = TraefikTUI(deep_link=deep_link)
     app.run()
 
 
