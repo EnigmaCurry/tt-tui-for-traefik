@@ -7,6 +7,7 @@ from enum import Enum
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+from textual.command import Hit, Hits, Provider
 from textual.containers import Container, Horizontal, Vertical
 from textual.reactive import reactive
 from textual.screen import ModalScreen
@@ -16,6 +17,49 @@ from .api import TraefikAPI, TraefikAPIError
 from .models import ConnectionStatus, Profile, ProfileRuntime, Settings
 from .monitor import check_connection
 from .widgets import EntrypointsView, MiddlewaresView, NavigateLink, ProfileEditor, ProfileList, RoutersView, ServicesView, StatusBar
+
+
+class ThemeProviderWithIndicator(Provider):
+    """A theme provider that marks the current theme with an asterisk."""
+
+    async def discover(self) -> Hits:
+        """Show all themes when command palette opens."""
+        current_theme = self.app.theme
+
+        for theme_name in sorted(self.app.available_themes):
+            if theme_name == current_theme:
+                display = f"* {theme_name}"
+            else:
+                display = f"  {theme_name}"
+
+            yield Hit(
+                1,
+                display,
+                lambda name=theme_name: self._set_theme(name),
+            )
+
+    async def search(self, query: str) -> Hits:
+        """Search for themes, marking the current one."""
+        matcher = self.matcher(query)
+        current_theme = self.app.theme
+
+        for theme_name in self.app.available_themes:
+            match = matcher.match(theme_name)
+            if match > 0:
+                if theme_name == current_theme:
+                    display = f"* {theme_name}"
+                else:
+                    display = f"  {theme_name}"
+
+                yield Hit(
+                    match,
+                    matcher.highlight(display),
+                    lambda name=theme_name: self._set_theme(name),
+                )
+
+    def _set_theme(self, theme_name: str) -> None:
+        """Set the application theme."""
+        self.app.theme = theme_name
 
 
 class ApiStatus(str, Enum):
@@ -530,6 +574,26 @@ class TraefikTUI(App):
         self._consecutive_errors = 0
         self._error_threshold = 5
         self._deep_link = deep_link
+        # Apply saved theme
+        if self.settings.theme:
+            self.theme = self.settings.theme
+
+    def watch_theme(self, old_theme: str, new_theme: str) -> None:
+        """Save theme preference when changed via command palette."""
+        if new_theme != self.settings.theme:
+            self.settings.theme = new_theme
+            self._dirty = True
+
+    def search_themes(self) -> None:
+        """Show theme picker with current theme indicated."""
+        from textual.command import CommandPalette
+
+        self.push_screen(
+            CommandPalette(
+                providers=[ThemeProviderWithIndicator],
+                placeholder="Search for themes...",
+            ),
+        )
 
     def compose(self) -> ComposeResult:
         yield TitleBar(id="title-bar")
