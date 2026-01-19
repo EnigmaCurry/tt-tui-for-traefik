@@ -11,12 +11,32 @@ from textual.command import Hit, Hits, Provider
 from textual.containers import Container, Horizontal, Vertical
 from textual.reactive import reactive
 from textual.screen import ModalScreen
-from textual.widgets import Button, DataTable, Footer, Input, Label, Static, Tab, TabbedContent, TabPane, Tabs
+from textual.widgets import (
+    Button,
+    DataTable,
+    Footer,
+    Input,
+    Label,
+    Static,
+    Tab,
+    TabbedContent,
+    TabPane,
+    Tabs,
+)
 
 from .api import Middleware, Service, TraefikAPI, TraefikAPIError
 from .models import ConnectionStatus, Profile, ProfileRuntime, Settings
 from .monitor import check_connection
-from .widgets import EntrypointsView, MiddlewaresView, NavigateLink, ProfileEditor, ProfileList, RoutersView, ServicesView, StatusBar
+from .widgets import (
+    EntrypointsView,
+    MiddlewaresView,
+    NavigateLink,
+    ProfileEditor,
+    ProfileList,
+    RoutersView,
+    ServicesView,
+    StatusBar,
+)
 
 
 class ThemeProviderWithIndicator(Provider):
@@ -189,7 +209,9 @@ class TitleBar(Horizontal):
         label = self.query_one("#title-profile", Static)
         label.update(profile_name or "No profile")
 
-    def update_connection_status(self, status: ConnectionStatus, error: str | None = None) -> None:
+    def update_connection_status(
+        self, status: ConnectionStatus, error: str | None = None
+    ) -> None:
         """Update the connection status display."""
         status_label = self.query_one("#title-status", Static)
         status_label.remove_class("connected", "disconnected", "error", "connecting")
@@ -376,7 +398,11 @@ class SearchResult:
         """Get display string with extra info."""
         if self.extra_info:
             # Truncate long rules
-            info = self.extra_info[:40] + "..." if len(self.extra_info) > 40 else self.extra_info
+            info = (
+                self.extra_info[:40] + "..."
+                if len(self.extra_info) > 40
+                else self.extra_info
+            )
             return info
         return ""
 
@@ -497,9 +523,13 @@ class SearchModal(ModalScreen[DeepLink | None]):
         if self._filtered_results:
             table.display = True
             no_results.display = False
-            for i, result in enumerate(self._filtered_results[:50]):  # Limit to 50 results
+            for i, result in enumerate(
+                self._filtered_results[:50]
+            ):  # Limit to 50 results
                 # Use index as key to avoid duplicates (same name can exist in different types/protocols)
-                table.add_row(result.display_type, result.name, result.display_info, key=str(i))
+                table.add_row(
+                    result.display_type, result.name, result.display_info, key=str(i)
+                )
             # Select first row
             if table.row_count > 0:
                 table.move_cursor(row=0)
@@ -663,7 +693,9 @@ class TraefikTUI(App):
                     username=direct_username or "",
                     password=direct_password or "",
                 )
-            self.settings.profiles = {"direct": Profile(url=direct_url, basic_auth=basic_auth)}
+            self.settings.profiles = {
+                "direct": Profile(url=direct_url, basic_auth=basic_auth)
+            }
             self.settings.selected_profile = "direct"
             # Don't start on settings tab in direct mode
             if self.settings.active_tab == "settings":
@@ -696,7 +728,9 @@ class TraefikTUI(App):
             ),
         )
 
-    def deliver_screenshot(self, filename: str | None = None, path: str | None = None) -> None:
+    def deliver_screenshot(
+        self, filename: str | None = None, path: str | None = None
+    ) -> None:
         """Save screenshot, creating ~/Downloads if needed."""
         from pathlib import Path
 
@@ -800,7 +834,12 @@ class TraefikTUI(App):
             # Scroll after callback (detail pane) has been set up
             self.set_timer(0.1, lambda: self._scroll_table_to_row(table, row_key))
         elif retries > 0:
-            self.set_timer(0.05, lambda: self._select_table_row_with_retry(table, row_key, callback, retries - 1))
+            self.set_timer(
+                0.05,
+                lambda: self._select_table_row_with_retry(
+                    table, row_key, callback, retries - 1
+                ),
+            )
         else:
             # Row not found after retries, still call callback to show detail
             callback()
@@ -817,11 +856,17 @@ class TraefikTUI(App):
             entrypoints_view = self.query_one("#entrypoints-view", EntrypointsView)
             table = entrypoints_view.query_one("#entrypoints-table", DataTable)
             self._select_table_row_with_retry(
-                table, link.resource_name, lambda: self._fetch_entrypoint_detail(link.resource_name)
+                table,
+                link.resource_name,
+                lambda: self._fetch_entrypoint_detail(link.resource_name),
             )
         elif resource_type == "router":
             routers_view = self.query_one("#routers-view", RoutersView)
-            sub_tab_map = {"http": "http-routers", "tcp": "tcp-routers", "udp": "udp-routers"}
+            sub_tab_map = {
+                "http": "http-routers",
+                "tcp": "tcp-routers",
+                "udp": "udp-routers",
+            }
             table_map = {"http": "http-table", "tcp": "tcp-table", "udp": "udp-table"}
 
             # Search stored router lists for exact or partial match
@@ -851,12 +896,24 @@ class TraefikTUI(App):
             tabs.active = sub_tab
             table = routers_view.query_one(f"#{table_id}", DataTable)
             self._select_table_row_with_retry(
-                table, actual_name, lambda name=actual_name, proto=protocol: self._fetch_router_detail(name, proto)
+                table,
+                actual_name,
+                lambda name=actual_name, proto=protocol: self._fetch_router_detail(
+                    name, proto
+                ),
             )
         elif resource_type == "service":
             services_view = self.query_one("#services-view", ServicesView)
-            sub_tab_map = {"http": "http-services", "tcp": "tcp-services", "udp": "udp-services"}
-            table_map = {"http": "http-svc-table", "tcp": "tcp-svc-table", "udp": "udp-svc-table"}
+            sub_tab_map = {
+                "http": "http-services",
+                "tcp": "tcp-services",
+                "udp": "udp-services",
+            }
+            table_map = {
+                "http": "http-svc-table",
+                "tcp": "tcp-svc-table",
+                "udp": "udp-svc-table",
+            }
 
             # Search stored service lists for exact or partial match
             found_protocol = None
@@ -885,7 +942,11 @@ class TraefikTUI(App):
             tabs.active = sub_tab
             table = services_view.query_one(f"#{table_id}", DataTable)
             self._select_table_row_with_retry(
-                table, actual_name, lambda name=actual_name, proto=protocol: self._fetch_service_detail(name, proto)
+                table,
+                actual_name,
+                lambda name=actual_name, proto=protocol: self._fetch_service_detail(
+                    name, proto
+                ),
             )
         elif resource_type == "middleware":
             middlewares_view = self.query_one("#middlewares-view", MiddlewaresView)
@@ -918,7 +979,11 @@ class TraefikTUI(App):
             tabs.active = sub_tab
             table = middlewares_view.query_one(f"#{table_id}", DataTable)
             self._select_table_row_with_retry(
-                table, actual_name, lambda name=actual_name, proto=protocol: self._fetch_middleware_detail(name, proto)
+                table,
+                actual_name,
+                lambda name=actual_name, proto=protocol: self._fetch_middleware_detail(
+                    name, proto
+                ),
             )
 
     def _refresh_current_tab(self) -> None:
@@ -967,7 +1032,13 @@ class TraefikTUI(App):
     def on_tab_activated(self, event: TabbedContent.TabActivated) -> None:
         """Handle tab changes."""
         # Only handle main app tabs, not sub-tabs
-        if event.pane.id in ("entrypoints", "routers", "services", "middleware", "settings"):
+        if event.pane.id in (
+            "entrypoints",
+            "routers",
+            "services",
+            "middleware",
+            "settings",
+        ):
             self.settings.active_tab = event.pane.id
             self._dirty = True
             self._refresh_current_tab()
@@ -1014,7 +1085,9 @@ class TraefikTUI(App):
         def handle_rename(new_name: str | None) -> None:
             if new_name and new_name != event.profile_name:
                 if new_name in self.settings.profiles:
-                    self.notify(f"Profile '{new_name}' already exists", severity="error")
+                    self.notify(
+                        f"Profile '{new_name}' already exists", severity="error"
+                    )
                     return
                 if self.settings.rename_profile(event.profile_name, new_name):
                     self.settings.save()
@@ -1265,7 +1338,11 @@ class TraefikTUI(App):
             for router in all_routers:
                 for ep_name in router.entry_points or []:
                     if ep_name not in router_stats:
-                        router_stats[ep_name] = {"enabled": 0, "disabled": 0, "warning": 0}
+                        router_stats[ep_name] = {
+                            "enabled": 0,
+                            "disabled": 0,
+                            "warning": 0,
+                        }
                         ep_services[ep_name] = set()
                         ep_middlewares[ep_name] = set()
                     status = (router.status or "").lower()
@@ -1301,7 +1378,9 @@ class TraefikTUI(App):
                     # Try exact match first, then base name match
                     svc = all_services.get(svc_name)
                     if not svc:
-                        base_name = svc_name.split("@")[0] if "@" in svc_name else svc_name
+                        base_name = (
+                            svc_name.split("@")[0] if "@" in svc_name else svc_name
+                        )
                         svc = all_services.get(base_name)
                     if svc:
                         status = (svc.status or "").lower()
@@ -1342,7 +1421,9 @@ class TraefikTUI(App):
                         elif status == "warning":
                             middleware_stats[ep_name]["warning"] += 1
 
-            entrypoints_view.update_entrypoints(entrypoints, router_stats, service_stats, middleware_stats)
+            entrypoints_view.update_entrypoints(
+                entrypoints, router_stats, service_stats, middleware_stats
+            )
             self._set_api_status(ApiStatus.SUCCESS)
             self._consecutive_errors = 0
 
@@ -1409,7 +1490,9 @@ class TraefikTUI(App):
 
         # Remember if detail pane was open and which middleware
         had_detail_open = middlewares_view.has_detail_open()
-        selected_middleware, selected_middleware_type = middlewares_view.get_selected_middleware()
+        selected_middleware, selected_middleware_type = (
+            middlewares_view.get_selected_middleware()
+        )
 
         self._set_api_status(ApiStatus.LOADING)
 
@@ -1457,7 +1540,9 @@ class TraefikTUI(App):
         self._fetch_middleware_detail(event.middleware_name, event.middleware_type)
 
     @work(exclusive=True, group="middleware-detail")
-    async def _fetch_middleware_detail(self, middleware_name: str, middleware_type: str) -> None:
+    async def _fetch_middleware_detail(
+        self, middleware_name: str, middleware_type: str
+    ) -> None:
         """Fetch and display middleware detail."""
         selected = self.settings.selected_profile
         if not selected or selected not in self.settings.profiles:
@@ -1644,20 +1729,32 @@ class TraefikTUI(App):
         # Routers (include rule as extra_info)
         routers_view = self.query_one("#routers-view", RoutersView)
         for router in routers_view._http_routers:
-            results.append(SearchResult("router", "http", router.name, router.rule or ""))
+            results.append(
+                SearchResult("router", "http", router.name, router.rule or "")
+            )
         for router in routers_view._tcp_routers:
-            results.append(SearchResult("router", "tcp", router.name, router.rule or ""))
+            results.append(
+                SearchResult("router", "tcp", router.name, router.rule or "")
+            )
         for router in routers_view._udp_routers:
-            results.append(SearchResult("router", "udp", router.name, router.rule or ""))
+            results.append(
+                SearchResult("router", "udp", router.name, router.rule or "")
+            )
 
         # Services (include type as extra_info)
         services_view = self.query_one("#services-view", ServicesView)
         for service in services_view._http_services:
-            results.append(SearchResult("service", "http", service.name, service.type or ""))
+            results.append(
+                SearchResult("service", "http", service.name, service.type or "")
+            )
         for service in services_view._tcp_services:
-            results.append(SearchResult("service", "tcp", service.name, service.type or ""))
+            results.append(
+                SearchResult("service", "tcp", service.name, service.type or "")
+            )
         for service in services_view._udp_services:
-            results.append(SearchResult("service", "udp", service.name, service.type or ""))
+            results.append(
+                SearchResult("service", "udp", service.name, service.type or "")
+            )
 
         # Middlewares (include type as extra_info)
         middlewares_view = self.query_one("#middlewares-view", MiddlewaresView)
@@ -1716,7 +1813,7 @@ class TraefikTUI(App):
 
 def main() -> None:
     """Entry point for the application."""
-    parser = argparse.ArgumentParser(description="TT TUI for Traefik")
+    parser = argparse.ArgumentParser(description="`tt` is a TUI for Traefik")
     parser.add_argument(
         "--link",
         "-l",
