@@ -7,6 +7,7 @@ from textual.message import Message
 from textual.widgets import DataTable, Label, Static, TabbedContent, TabPane
 
 from ..api import Service, ServiceDetail
+from .routers import ClickableStatic, NavigateLink
 
 
 class ServiceDetailPane(Vertical):
@@ -33,16 +34,20 @@ class ServiceDetailPane(Vertical):
     ServiceDetailPane .detail-error {
         color: $error;
     }
+
+    ServiceDetailPane .link {
+        color: $accent;
+        text-style: underline;
+    }
     """
 
     def __init__(self, detail: ServiceDetail, **kwargs) -> None:
         super().__init__(**kwargs)
         self._detail = detail
-        self.can_focus = False
 
     def compose(self) -> ComposeResult:
         yield Label("", id="detail-header", classes="detail-header")
-        yield Static("", id="detail-content", classes="detail-content")
+        yield ClickableStatic("", id="detail-content", classes="detail-content")
         yield Static("", id="detail-errors", classes="detail-error")
 
     def on_mount(self) -> None:
@@ -53,6 +58,11 @@ class ServiceDetailPane(Vertical):
         """Update the detail content in place."""
         self._detail = detail
         self._update_display()
+
+    def _make_link(self, resource_type: str, name: str) -> str:
+        """Create a clickable link markup for a resource."""
+        link = f"{resource_type}#{name}"
+        return f'[@click=navigate_link("{link}")]<{name}>[/]'
 
     def _update_display(self) -> None:
         """Update all display elements."""
@@ -93,7 +103,8 @@ class ServiceDetailPane(Vertical):
             lines.append(f"Failover:      {d.failover.get('service', '-')}")
 
         if d.used_by:
-            lines.append(f"Used By:       {', '.join(d.used_by)}")
+            router_links = ", ".join(self._make_link("router", r) for r in d.used_by)
+            lines.append(f"Used By:       {router_links}")
 
         if d.using:
             lines.append(f"Using:         {', '.join(d.using)}")

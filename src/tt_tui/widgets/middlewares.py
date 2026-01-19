@@ -7,6 +7,7 @@ from textual.message import Message
 from textual.widgets import DataTable, Label, Static, TabbedContent, TabPane
 
 from ..api import Middleware, MiddlewareDetail
+from .routers import ClickableStatic, NavigateLink
 
 
 class MiddlewareDetailPane(Vertical):
@@ -33,16 +34,20 @@ class MiddlewareDetailPane(Vertical):
     MiddlewareDetailPane .detail-error {
         color: $error;
     }
+
+    MiddlewareDetailPane .link {
+        color: $accent;
+        text-style: underline;
+    }
     """
 
     def __init__(self, detail: MiddlewareDetail, **kwargs) -> None:
         super().__init__(**kwargs)
         self._detail = detail
-        self.can_focus = False
 
     def compose(self) -> ComposeResult:
         yield Label("", id="detail-header", classes="detail-header")
-        yield Static("", id="detail-content", classes="detail-content")
+        yield ClickableStatic("", id="detail-content", classes="detail-content")
         yield Static("", id="detail-errors", classes="detail-error")
 
     def on_mount(self) -> None:
@@ -53,6 +58,11 @@ class MiddlewareDetailPane(Vertical):
         """Update the detail content in place."""
         self._detail = detail
         self._update_display()
+
+    def _make_link(self, resource_type: str, name: str) -> str:
+        """Create a clickable link markup for a resource."""
+        link = f"{resource_type}#{name}"
+        return f'[@click=navigate_link("{link}")]<{name}>[/]'
 
     def _update_display(self) -> None:
         """Update all display elements."""
@@ -69,10 +79,12 @@ class MiddlewareDetailPane(Vertical):
         ]
 
         if d.used_by:
-            lines.append(f"Used By:       {', '.join(d.used_by)}")
+            router_links = ", ".join(self._make_link("router", r) for r in d.used_by)
+            lines.append(f"Used By:       {router_links}")
 
         if d.using:
-            lines.append(f"Using:         {', '.join(d.using)}")
+            middleware_links = ", ".join(self._make_link("middleware", m) for m in d.using)
+            lines.append(f"Using:         {middleware_links}")
 
         # Display type-specific configuration
         if d.config:

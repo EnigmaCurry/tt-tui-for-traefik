@@ -34,7 +34,7 @@ class EntrypointDetailPane(Vertical):
     def __init__(self, detail: EntrypointDetail, **kwargs) -> None:
         super().__init__(**kwargs)
         self._detail = detail
-        self.can_focus = False
+        self.can_focus = True
 
     def compose(self) -> ComposeResult:
         yield Label("", id="detail-header", classes="detail-header")

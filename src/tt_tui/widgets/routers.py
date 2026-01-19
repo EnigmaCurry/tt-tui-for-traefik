@@ -9,6 +9,22 @@ from textual.widgets import DataTable, Label, Static, TabbedContent, TabPane
 from ..api import Router, RouterDetail
 
 
+class NavigateLink(Message):
+    """Message to request navigation to a resource link."""
+
+    def __init__(self, link: str) -> None:
+        self.link = link
+        super().__init__()
+
+
+class ClickableStatic(Static):
+    """A Static widget that can handle action link clicks."""
+
+    def action_navigate_link(self, link: str) -> None:
+        """Handle navigation link clicks."""
+        self.post_message(NavigateLink(link))
+
+
 class RouterDetailPane(Vertical):
     """A pane showing detailed router information."""
 
@@ -33,16 +49,20 @@ class RouterDetailPane(Vertical):
     RouterDetailPane .detail-error {
         color: $error;
     }
+
+    RouterDetailPane .link {
+        color: $accent;
+        text-style: underline;
+    }
     """
 
     def __init__(self, detail: RouterDetail, **kwargs) -> None:
         super().__init__(**kwargs)
         self._detail = detail
-        self.can_focus = False
 
     def compose(self) -> ComposeResult:
         yield Label("", id="detail-header", classes="detail-header")
-        yield Static("", id="detail-content", classes="detail-content")
+        yield ClickableStatic("", id="detail-content", classes="detail-content")
         yield Static("", id="detail-errors", classes="detail-error")
 
     def on_mount(self) -> None:
@@ -54,6 +74,11 @@ class RouterDetailPane(Vertical):
         self._detail = detail
         self._update_display()
 
+    def _make_link(self, resource_type: str, name: str) -> str:
+        """Create a clickable link markup for a resource."""
+        link = f"{resource_type}#{name}"
+        return f'[@click=navigate_link("{link}")]<{name}>[/]'
+
     def _update_display(self) -> None:
         """Update all display elements."""
         d = self._detail
@@ -62,17 +87,19 @@ class RouterDetailPane(Vertical):
         header.update(f"Router: {d.name}")
 
         # Build content text
+        service_link = self._make_link("service", d.service) if d.service else "-"
         lines = [
             f"Provider:      {d.provider}",
             f"Status:        {d.status}",
             f"Rule:          {d.rule or '-'}",
-            f"Service:       {d.service or '-'}",
+            f"Service:       {service_link}",
             f"Entry Points:  {', '.join(d.entry_points) if d.entry_points else '-'}",
             f"Priority:      {d.priority}",
         ]
 
         if d.middlewares:
-            lines.append(f"Middlewares:   {', '.join(d.middlewares)}")
+            middleware_links = ", ".join(self._make_link("middleware", m) for m in d.middlewares)
+            lines.append(f"Middlewares:   {middleware_links}")
 
         if d.tls:
             tls_info = "Enabled"

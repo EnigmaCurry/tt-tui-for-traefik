@@ -15,7 +15,7 @@ from textual.widgets import Button, DataTable, Footer, Header, Input, Label, Sta
 from .api import TraefikAPI, TraefikAPIError
 from .models import ConnectionStatus, Profile, ProfileRuntime, Settings
 from .monitor import check_connection
-from .widgets import EntrypointsView, MiddlewaresView, ProfileEditor, ProfileList, RoutersView, ServicesView, StatusBar
+from .widgets import EntrypointsView, MiddlewaresView, NavigateLink, ProfileEditor, ProfileList, RoutersView, ServicesView, StatusBar
 
 
 class ApiStatus(str, Enum):
@@ -377,37 +377,102 @@ class TraefikTUI(App):
             routers_view = self.query_one("#routers-view", RoutersView)
             sub_tab_map = {"http": "http-routers", "tcp": "tcp-routers", "udp": "udp-routers"}
             table_map = {"http": "http-table", "tcp": "tcp-table", "udp": "udp-table"}
-            sub_tab = sub_tab_map.get(link.protocol, "http-routers")
-            table_id = table_map.get(link.protocol, "http-table")
+
+            # Search stored router lists for exact or partial match
+            found_protocol = None
+            actual_name = link.resource_name
+            for proto, routers_list in [
+                ("http", routers_view._http_routers),
+                ("tcp", routers_view._tcp_routers),
+                ("udp", routers_view._udp_routers),
+            ]:
+                for router in routers_list:
+                    if router.name == link.resource_name:
+                        found_protocol = proto
+                        actual_name = router.name
+                        break
+                    if router.name.startswith(f"{link.resource_name}@"):
+                        found_protocol = proto
+                        actual_name = router.name
+                        break
+                if found_protocol:
+                    break
+
+            protocol = found_protocol or link.protocol
+            sub_tab = sub_tab_map.get(protocol, "http-routers")
+            table_id = table_map.get(protocol, "http-table")
             tabs = routers_view.query_one("#routers-tabs", TabbedContent)
             tabs.active = sub_tab
             table = routers_view.query_one(f"#{table_id}", DataTable)
             self._select_table_row_with_retry(
-                table, link.resource_name, lambda: self._fetch_router_detail(link.resource_name, link.protocol)
+                table, actual_name, lambda name=actual_name, proto=protocol: self._fetch_router_detail(name, proto)
             )
         elif resource_type == "service":
             services_view = self.query_one("#services-view", ServicesView)
             sub_tab_map = {"http": "http-services", "tcp": "tcp-services", "udp": "udp-services"}
             table_map = {"http": "http-svc-table", "tcp": "tcp-svc-table", "udp": "udp-svc-table"}
-            sub_tab = sub_tab_map.get(link.protocol, "http-services")
-            table_id = table_map.get(link.protocol, "http-svc-table")
+
+            # Search stored service lists for exact or partial match
+            found_protocol = None
+            actual_name = link.resource_name
+            for proto, services_list in [
+                ("http", services_view._http_services),
+                ("tcp", services_view._tcp_services),
+                ("udp", services_view._udp_services),
+            ]:
+                for service in services_list:
+                    if service.name == link.resource_name:
+                        found_protocol = proto
+                        actual_name = service.name
+                        break
+                    if service.name.startswith(f"{link.resource_name}@"):
+                        found_protocol = proto
+                        actual_name = service.name
+                        break
+                if found_protocol:
+                    break
+
+            protocol = found_protocol or link.protocol
+            sub_tab = sub_tab_map.get(protocol, "http-services")
+            table_id = table_map.get(protocol, "http-svc-table")
             tabs = services_view.query_one("#services-tabs", TabbedContent)
             tabs.active = sub_tab
             table = services_view.query_one(f"#{table_id}", DataTable)
             self._select_table_row_with_retry(
-                table, link.resource_name, lambda: self._fetch_service_detail(link.resource_name, link.protocol)
+                table, actual_name, lambda name=actual_name, proto=protocol: self._fetch_service_detail(name, proto)
             )
         elif resource_type == "middleware":
             middlewares_view = self.query_one("#middlewares-view", MiddlewaresView)
             sub_tab_map = {"http": "http-middlewares", "tcp": "tcp-middlewares"}
             table_map = {"http": "http-mw-table", "tcp": "tcp-mw-table"}
-            sub_tab = sub_tab_map.get(link.protocol, "http-middlewares")
-            table_id = table_map.get(link.protocol, "http-mw-table")
+
+            # Search stored middleware lists for exact or partial match
+            found_protocol = None
+            actual_name = link.resource_name
+            for proto, middlewares_list in [
+                ("http", middlewares_view._http_middlewares),
+                ("tcp", middlewares_view._tcp_middlewares),
+            ]:
+                for middleware in middlewares_list:
+                    if middleware.name == link.resource_name:
+                        found_protocol = proto
+                        actual_name = middleware.name
+                        break
+                    if middleware.name.startswith(f"{link.resource_name}@"):
+                        found_protocol = proto
+                        actual_name = middleware.name
+                        break
+                if found_protocol:
+                    break
+
+            protocol = found_protocol or link.protocol
+            sub_tab = sub_tab_map.get(protocol, "http-middlewares")
+            table_id = table_map.get(protocol, "http-mw-table")
             tabs = middlewares_view.query_one("#middlewares-tabs", TabbedContent)
             tabs.active = sub_tab
             table = middlewares_view.query_one(f"#{table_id}", DataTable)
             self._select_table_row_with_retry(
-                table, link.resource_name, lambda: self._fetch_middleware_detail(link.resource_name, link.protocol)
+                table, actual_name, lambda name=actual_name, proto=protocol: self._fetch_middleware_detail(name, proto)
             )
 
     def _refresh_current_tab(self) -> None:
@@ -967,6 +1032,34 @@ class TraefikTUI(App):
         if self._dirty:
             self.settings.save()
         self.exit()
+
+    @on(NavigateLink)
+    def on_navigate_link(self, event: NavigateLink) -> None:
+        """Handle navigation link messages from detail panes."""
+        self._navigate_to_link(event.link)
+
+    def _navigate_to_link(self, link: str) -> None:
+        """Navigate to a deep link."""
+        deep_link = DeepLink.parse(link)
+        if not deep_link:
+            return
+
+        self._deep_link = deep_link
+
+        # Switch to the correct tab
+        tab_map = {
+            "entrypoint": "entrypoints",
+            "router": "routers",
+            "service": "services",
+            "middleware": "middleware",
+        }
+        target_tab = tab_map.get(deep_link.resource_type)
+        if target_tab:
+            self.settings.active_tab = target_tab
+            tabbed_content = self.query_one(TabbedContent)
+            tabbed_content.active = target_tab
+            # Refresh the tab which will trigger deep link navigation
+            self._refresh_current_tab()
 
 
 def main() -> None:
