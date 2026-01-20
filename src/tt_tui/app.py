@@ -695,9 +695,38 @@ class TraefikTUI(App):
         self._error_threshold = 5
         self._deep_link = deep_link
         self._first_connection_checked = False
+        self._active_notifications: set[str] = set()
         # Apply saved theme
         if self.settings.theme:
             self.theme = self.settings.theme
+
+    def notify(
+        self,
+        message: str,
+        *,
+        title: str = "",
+        severity: str = "information",
+        timeout: float = 5.0,
+    ) -> None:
+        """Show a notification, skipping duplicates that are already visible."""
+        # Create a key from the message and severity to identify duplicates
+        notification_key = f"{severity}:{message}"
+
+        # Skip if this exact notification is already showing
+        if notification_key in self._active_notifications:
+            return
+
+        # Track this notification
+        self._active_notifications.add(notification_key)
+
+        # Schedule removal after timeout
+        def clear_notification() -> None:
+            self._active_notifications.discard(notification_key)
+
+        self.set_timer(timeout, clear_notification)
+
+        # Call the parent notify
+        super().notify(message, title=title, severity=severity, timeout=timeout)
 
     def watch_theme(self, old_theme: str, new_theme: str) -> None:
         """Save theme preference when changed via command palette."""

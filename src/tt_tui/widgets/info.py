@@ -92,7 +92,7 @@ class InfoView(Vertical):
                     display_value = "Disabled"
                 else:
                     display_value = str(value)
-                feature_lines.append(f"{key}: {display_value}")
+                feature_lines.append(f"{key}:\t{display_value}")
             features_content.update("\n".join(feature_lines))
         else:
             features_content.update("None")
