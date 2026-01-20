@@ -1,6 +1,6 @@
 # tt-tui-for-traefik
 
-A TUI dashboard for Traefik.
+`tt` is a console TUI dashboard for Traefik.
 
 ## Install
 
@@ -10,15 +10,17 @@ A TUI dashboard for Traefik.
 uv tool install git+https://github.com/EnigmaCurry/tt-tui-for-traefik
 ```
 
+ * Make sure your PATH environment variable (e.g., in `~/.bashrc`)
+   includes the directory `${HOME}/.local/bin`.
 
 ## Usage
 
-The tool is intalled as the binary `tt`.
+The `tt` tool is installed at `${HOME}/.local/bin/tt`.
 
 ```
 usage: tt [-h] [--link LINK] [--url URL] [--username USERNAME] [--password PASSWORD]
 
-TT TUI for Traefik
+`tt` is a console TUI dashboard for Traefik
 
 options:
   -h, --help           show this help message and exit
@@ -45,3 +47,11 @@ The connection information must be set one of two ways:
  * On the `Settings` tab, enter the URL with port, username, and passsword.
  * Via the `--url`, `--username` and `--password` command line options
    (this disables the `Settings` tab for this session).
+
+## Development
+
+Put this in `~/.bashrc` to create a `tt` alias for development purposes:
+
+```
+alias tt="uv --project ${HOME}/git/vendor/enigmacurry/tt-tui-for-traefik run tt
+```

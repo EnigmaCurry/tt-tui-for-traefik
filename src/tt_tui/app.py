@@ -1813,7 +1813,9 @@ class TraefikTUI(App):
 
 def main() -> None:
     """Entry point for the application."""
-    parser = argparse.ArgumentParser(description="`tt` is a TUI for Traefik")
+    parser = argparse.ArgumentParser(
+        description="`tt` is a console TUI dashboard for Traefik"
+    )
     parser.add_argument(
         "--link",
         "-l",
