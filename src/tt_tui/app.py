@@ -584,7 +584,6 @@ class TraefikTUI(App):
 
     BINDINGS = [
         Binding("q", "quit", "Quit"),
-        Binding("ctrl+s", "save", "Save"),
         Binding("/", "search", "Search"),
         Binding("escape", "escape_context", "Back", show=False),
         Binding("enter", "enter_context", "Enter", show=False),
