@@ -39,6 +39,10 @@ options:
  * Press `ESC` to ascend the focus back to the tab bar.
  * Press `q` to quit.
  * Press `/` to search.
+ * Press `Ctrl` + `P` to bring up the Pallete. 
+   * Select the `Keys` command to show a help screen with all of the
+     contextual keybindings.
+   * Select the `Theme` command to change the inteface theme.
 
 ### Configure Traefik API
 
@@ -47,6 +51,10 @@ The connection information must be set one of two ways:
  * On the `Settings` tab, enter the URL with port, username, and passsword.
  * Via the `--url`, `--username` and `--password` command line options
    (this disables the `Settings` tab for this session).
+
+All settings are saved to the file
+`${HOME}/.local/share/tt-tui-for-traefik/config.toml`. *WARNING: This
+config file includes Traefik API credetials!*
 
 ## Development
 

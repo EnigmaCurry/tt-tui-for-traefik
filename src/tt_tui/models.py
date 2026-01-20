@@ -92,9 +92,13 @@ class Settings(BaseModel):
 
     def save(self) -> None:
         """Save settings to disk."""
+        import os
+
         config_path = self.get_config_path()
         with open(config_path, "wb") as f:
             tomli_w.dump(self.model_dump(exclude_none=True), f)
+        # Ensure restrictive permissions (0600) to protect credentials
+        os.chmod(config_path, 0o600)
 
     def get_profile_key_from_url(self, url: str) -> str:
         """Generate a profile key from a URL."""
