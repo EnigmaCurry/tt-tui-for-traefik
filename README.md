@@ -1,6 +1,10 @@
 # tt-tui-for-traefik
 
-`tt` is a console TUI dashboard for Traefik.
+`tt` is a console TUI dashboard for
+[Traefik](https://doc.traefik.io/traefik/).
+
+This program is a third party companion tool for Traefik. Traefik is a
+trademark of [Traefik Labs](https://traefik.io/).
 
 ## Install
 
@@ -43,6 +47,12 @@ options:
    * Select the `Keys` command to show a help screen with all of the
      contextual keybindings.
    * Select the `Theme` command to change the inteface theme.
+
+### Mouse navigation
+
+In modern terminals, mouse / pointer support is enabled by default.
+You can click on tabs and buttons in the terminal window to navigate
+the app.
 
 ### Configure Traefik API
 
