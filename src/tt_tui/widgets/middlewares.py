@@ -7,7 +7,7 @@ from textual.message import Message
 from textual.widgets import DataTable, Label, Static, TabbedContent, TabPane
 
 from ..api import Middleware, MiddlewareDetail
-from .routers import ClickableStatic, NavigateLink, _status_emoji
+from .routers import ClickableStatic, _status_emoji
 
 
 class MiddlewareDetailPane(Vertical):

@@ -7,7 +7,7 @@ from textual.message import Message
 from textual.widgets import DataTable, Label, Static, TabbedContent, TabPane
 
 from ..api import Service, ServiceDetail
-from .routers import ClickableStatic, NavigateLink, _status_emoji
+from .routers import ClickableStatic, _status_emoji
 
 
 class ServiceDetailPane(Vertical):
@@ -86,7 +86,7 @@ class ServiceDetailPane(Vertical):
             servers = d.load_balancer.get("servers", [])
             if servers:
                 lines.append(f"Load Balancer: {len(servers)} server(s)")
-                for i, server in enumerate(servers[:5]):  # Show first 5
+                for _, server in enumerate(servers[:5]):  # Show first 5
                     url = server.get("url", server.get("address", "unknown"))
                     lines.append(f"  - {url}")
                 if len(servers) > 5:

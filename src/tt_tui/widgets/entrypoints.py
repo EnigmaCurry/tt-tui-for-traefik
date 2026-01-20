@@ -89,7 +89,10 @@ class EntrypointDetailPane(Vertical):
                 entry_point = redirections.get("entryPoint", {})
                 if to := entry_point.get("to"):
                     scheme = entry_point.get("scheme", "")
-                    lines.append(f"Redirect:      -> {to} ({scheme})" if scheme else f"Redirect:      -> {to}")
+                    if scheme:
+                        lines.append(f"Redirect:      -> {to} ({scheme})")
+                    else:
+                        lines.append(f"Redirect:      -> {to}")
             middlewares = d.http.get("middlewares")
             if middlewares:
                 lines.append(f"Middlewares:   {', '.join(middlewares)}")
