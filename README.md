@@ -11,7 +11,7 @@ trademark of [Traefik Labs](https://traefik.io/).
  * Install [uv](https://docs.astral.sh/uv/#installation)
 
 ```
-uv tool install git+https://github.com/EnigmaCurry/tt-tui-for-traefik
+uv tool install tt-tui-for-traefik
 ```
 
  * Make sure your PATH environment variable (e.g., in `~/.bashrc`)
