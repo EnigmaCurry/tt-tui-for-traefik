@@ -16,7 +16,13 @@ class InfoView(Vertical):
     DEFAULT_CSS = """
     InfoView {
         height: 1fr;
-        padding: 1 2;
+        padding: 1 1;
+    }
+
+    InfoView #summary-bar {
+        height: auto;
+        padding: 0;
+        margin-bottom: 0;
     }
 
     InfoView .section-header {
@@ -52,6 +58,7 @@ class InfoView(Vertical):
         self._overview: TraefikOverview | None = None
 
     def compose(self) -> ComposeResult:
+        yield Static("", id="summary-bar")
         yield Label("Traefik Version", classes="section-header")
         yield Static("Loading...", id="version-content", classes="section-content")
         yield Label("Enabled Providers", classes="section-header")
@@ -97,6 +104,43 @@ class InfoView(Vertical):
         else:
             features_content.update("None")
 
+    def _format_summary_stats(self, stats: dict[str, int], label: str) -> str:
+        """Format stats for the summary bar."""
+        enabled = stats.get("enabled", 0)
+        disabled = stats.get("disabled", 0)
+        warning = stats.get("warning", 0)
+
+        parts = [f"{label}:"]
+        if enabled > 0:
+            parts.append(f"[green]{enabled}✓[/]")
+        if warning > 0:
+            parts.append(f"[yellow]{warning}⚠[/]")
+        if disabled > 0:
+            parts.append(f"[red]{disabled}✗[/]")
+
+        if len(parts) == 1:
+            parts.append("0")
+
+        return " ".join(parts)
+
+    def update_summary(self, global_totals: dict[str, dict[str, int]]) -> None:
+        """Update the summary bar with global totals."""
+        summary_bar = self.query_one("#summary-bar", Static)
+
+        router_totals = global_totals.get("routers", {})
+        service_totals = global_totals.get("services", {})
+        middleware_totals = global_totals.get("middlewares", {})
+
+        parts = [
+            self._format_summary_stats(router_totals, "Routers"),
+            "  ",
+            self._format_summary_stats(service_totals, "Services"),
+            "  ",
+            self._format_summary_stats(middleware_totals, "Middlewares"),
+        ]
+
+        summary_bar.update("".join(parts))
+
     def show_error(self, message: str) -> None:
         """Show an error state."""
         version_content = self.query_one("#version-content", Static)
@@ -108,6 +152,8 @@ class InfoView(Vertical):
 
     def show_loading(self) -> None:
         """Show a loading state."""
+        summary_bar = self.query_one("#summary-bar", Static)
+        summary_bar.update("Loading...")
         version_content = self.query_one("#version-content", Static)
         version_content.update("Loading...")
         providers_content = self.query_one("#providers-content", Static)
@@ -119,6 +165,8 @@ class InfoView(Vertical):
         """Clear the display."""
         self._version = None
         self._overview = None
+        summary_bar = self.query_one("#summary-bar", Static)
+        summary_bar.update("-")
         version_content = self.query_one("#version-content", Static)
         version_content.update("-")
         providers_content = self.query_one("#providers-content", Static)

@@ -1542,7 +1542,7 @@ class TraefikTUI(App):
 
     @work(exclusive=True, group="info")
     async def _refresh_info(self) -> None:
-        """Fetch and display Traefik info (version, providers, features)."""
+        """Fetch and display Traefik info (version, providers, features, totals)."""
         selected = self.settings.selected_profile
         if not selected or selected not in self.settings.profiles:
             return
@@ -1559,8 +1559,58 @@ class TraefikTUI(App):
             version = await api.get_version()
             overview = await api.get_overview()
 
+            # Fetch routers, services, middlewares to build global totals
+            http_routers = await api.get_http_routers()
+            tcp_routers = await api.get_tcp_routers()
+            udp_routers = await api.get_udp_routers()
+            all_routers = http_routers + tcp_routers + udp_routers
+
+            http_services = await api.get_http_services()
+            tcp_services = await api.get_tcp_services()
+            udp_services = await api.get_udp_services()
+            all_services = http_services + tcp_services + udp_services
+
+            http_middlewares = await api.get_http_middlewares()
+            tcp_middlewares = await api.get_tcp_middlewares()
+            all_middlewares = http_middlewares + tcp_middlewares
+
+            # Build global totals
+            global_totals: dict[str, dict[str, int]] = {
+                "routers": {"enabled": 0, "disabled": 0, "warning": 0},
+                "services": {"enabled": 0, "disabled": 0, "warning": 0},
+                "middlewares": {"enabled": 0, "disabled": 0, "warning": 0},
+            }
+
+            for router in all_routers:
+                status = (router.status or "").lower()
+                if status == "enabled":
+                    global_totals["routers"]["enabled"] += 1
+                elif status == "disabled":
+                    global_totals["routers"]["disabled"] += 1
+                elif status == "warning":
+                    global_totals["routers"]["warning"] += 1
+
+            for svc in all_services:
+                status = (svc.status or "").lower()
+                if status == "enabled":
+                    global_totals["services"]["enabled"] += 1
+                elif status == "disabled":
+                    global_totals["services"]["disabled"] += 1
+                elif status == "warning":
+                    global_totals["services"]["warning"] += 1
+
+            for mw in all_middlewares:
+                status = (mw.status or "").lower()
+                if status == "enabled":
+                    global_totals["middlewares"]["enabled"] += 1
+                elif status == "disabled":
+                    global_totals["middlewares"]["disabled"] += 1
+                elif status == "warning":
+                    global_totals["middlewares"]["warning"] += 1
+
             info_view.update_version(version)
             info_view.update_overview(overview)
+            info_view.update_summary(global_totals)
             self._set_api_status(ApiStatus.SUCCESS)
             self._consecutive_errors = 0
 
