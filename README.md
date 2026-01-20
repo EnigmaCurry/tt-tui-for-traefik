@@ -6,6 +6,8 @@
 This program is a third party companion tool for Traefik. Traefik is a
 trademark of [Traefik Labs](https://traefik.io/).
 
+<img src="https://github.com/EnigmaCurry/tt-tui-for-traefik/blob/master/_img/TraefikTUI_2026-01-19T21_29_23_594691.svg">
+
 ## Install
 
  * Install [uv](https://docs.astral.sh/uv/#installation)
