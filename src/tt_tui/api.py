@@ -16,6 +16,15 @@ class TraefikVersion:
 
 
 @dataclass
+class TraefikOverview:
+    """Traefik overview information from /api/overview."""
+
+    enabled_providers: list[str]
+    enabled_features: dict[str, str | bool]
+    raw: dict | None = None
+
+
+@dataclass
 class Router:
     """A Traefik router (summary)."""
 
@@ -208,6 +217,19 @@ class TraefikAPI:
         return TraefikVersion(
             version=data.get("Version", "unknown"),
             codename=data.get("Codename"),
+        )
+
+    async def get_overview(self) -> TraefikOverview:
+        """Get Traefik overview information (providers and features)."""
+        data = await self._get("/api/overview")
+        # Providers is a list of strings like ["Docker", "File"]
+        providers = data.get("providers", [])
+        # Features contains values that can be strings or booleans
+        features = data.get("features", {})
+        return TraefikOverview(
+            enabled_providers=providers,
+            enabled_features=features,
+            raw=data,
         )
 
     async def get_http_routers(self) -> list[Router]:

@@ -40,7 +40,7 @@ class ProfileRuntime(BaseModel):
     error: str | None = None
 
 
-_VALID_TABS = frozenset({"entrypoints", "routers", "services", "middleware", "settings"})
+_VALID_TABS = frozenset({"entrypoints", "routers", "services", "middleware", "info", "settings"})
 
 
 class Settings(BaseModel):

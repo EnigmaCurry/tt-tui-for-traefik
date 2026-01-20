@@ -29,6 +29,7 @@ from .models import ConnectionStatus, Profile, ProfileRuntime, Settings
 from .monitor import check_connection
 from .widgets import (
     EntrypointsView,
+    InfoView,
     MiddlewaresView,
     NavigateLink,
     ProfileEditor,
@@ -738,6 +739,8 @@ class TraefikTUI(App):
                 yield ServicesView(id="services-view")
             with TabPane("Middleware", id="middleware"):
                 yield MiddlewaresView(id="middlewares-view")
+            with TabPane("Info", id="info"):
+                yield InfoView(id="info-view")
             if not self._direct_mode:
                 with TabPane("Settings", id="settings"):
                     with Horizontal(id="settings-content"):
@@ -974,6 +977,8 @@ class TraefikTUI(App):
             self._refresh_services()
         elif active_tab == "middleware":
             self._refresh_middlewares()
+        elif active_tab == "info":
+            self._refresh_info()
 
     def _refresh_profile_list(self) -> None:
         """Refresh the profile list widget."""
@@ -1014,6 +1019,7 @@ class TraefikTUI(App):
             "routers",
             "services",
             "middleware",
+            "info",
             "settings",
         ):
             self.settings.active_tab = event.pane.id
@@ -1502,6 +1508,37 @@ class TraefikTUI(App):
             self._consecutive_errors += 1
             if self._consecutive_errors >= self._error_threshold:
                 await middlewares_view.clear_tables()
+            self._set_api_status(ApiStatus.ERROR)
+            self.notify(f"Connection error: {e}", severity="error")
+
+    @work(exclusive=True, group="info")
+    async def _refresh_info(self) -> None:
+        """Fetch and display Traefik info (version, providers, features)."""
+        selected = self.settings.selected_profile
+        if not selected or selected not in self.settings.profiles:
+            return
+
+        profile = self.settings.profiles[selected]
+        if not profile.url:
+            return
+
+        info_view = self.query_one("#info-view", InfoView)
+        self._set_api_status(ApiStatus.LOADING)
+
+        try:
+            api = TraefikAPI(profile.url, profile.basic_auth)
+            version = await api.get_version()
+            overview = await api.get_overview()
+
+            info_view.update_version(version)
+            info_view.update_overview(overview)
+            self._set_api_status(ApiStatus.SUCCESS)
+            self._consecutive_errors = 0
+
+        except TraefikAPIError as e:
+            self._consecutive_errors += 1
+            if self._consecutive_errors >= self._error_threshold:
+                info_view.clear()
             self._set_api_status(ApiStatus.ERROR)
             self.notify(f"Connection error: {e}", severity="error")
 
