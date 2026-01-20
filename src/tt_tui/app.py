@@ -707,6 +707,7 @@ class TraefikTUI(App):
         self._consecutive_errors = 0
         self._error_threshold = 5
         self._deep_link = deep_link
+        self._first_connection_checked = False
         # Apply saved theme
         if self.settings.theme:
             self.theme = self.settings.theme
@@ -1593,6 +1594,13 @@ class TraefikTUI(App):
             self._set_api_status(ApiStatus.SUCCESS)
         else:
             self._set_api_status(ApiStatus.ERROR)
+            # Navigate to Settings on first connection failure
+            if not self._first_connection_checked and not self._direct_mode:
+                self.settings.active_tab = "settings"
+                tabbed_content = self.query_one(TabbedContent)
+                tabbed_content.active = "settings"
+
+        self._first_connection_checked = True
 
     def _start_monitor(self) -> None:
         """Start the background connection monitor."""
