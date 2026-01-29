@@ -388,6 +388,117 @@ class InputDialog(ModalScreen[str | None]):
         self.dismiss(None)
 
 
+class LoginScreen(ModalScreen[tuple[str, str] | None]):
+    """A login dialog for username and password."""
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+    ]
+
+    DEFAULT_CSS = """
+    LoginScreen {
+        align: center middle;
+    }
+
+    LoginScreen > Vertical {
+        width: 60;
+        height: auto;
+        border: thick $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+
+    LoginScreen .dialog-title {
+        text-style: bold;
+        padding-bottom: 1;
+        text-align: center;
+    }
+
+    LoginScreen .field-label {
+        padding-top: 1;
+        color: $text-muted;
+    }
+
+    LoginScreen Input {
+        margin-bottom: 1;
+    }
+
+    LoginScreen Horizontal {
+        align: center middle;
+        height: auto;
+        padding-top: 1;
+    }
+
+    LoginScreen Button {
+        margin: 0 1;
+    }
+
+    LoginScreen .url-display {
+        color: $text-muted;
+        text-align: center;
+        padding-bottom: 1;
+    }
+    """
+
+    def __init__(
+        self,
+        url: str,
+        initial_username: str = "",
+        initial_password: str = "",
+    ) -> None:
+        super().__init__()
+        self._url = url
+        self._initial_username = initial_username
+        self._initial_password = initial_password
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Label("Traefik Login", classes="dialog-title")
+            yield Label(self._url, classes="url-display")
+            yield Label("Username", classes="field-label")
+            yield Input(value=self._initial_username, id="login-username")
+            yield Label("Password", classes="field-label")
+            yield Input(
+                value=self._initial_password, password=True, id="login-password"
+            )
+            with Horizontal():
+                yield Button("Connect", variant="primary", id="connect-btn")
+                yield Button("Cancel", variant="default", id="cancel-btn")
+
+    def on_mount(self) -> None:
+        # Focus on the first empty field, or password if username is filled
+        username_input = self.query_one("#login-username", Input)
+        password_input = self.query_one("#login-password", Input)
+        if self._initial_username:
+            password_input.focus()
+        else:
+            username_input.focus()
+
+    @on(Input.Submitted, "#login-username")
+    def on_username_submitted(self) -> None:
+        self.query_one("#login-password", Input).focus()
+
+    @on(Input.Submitted, "#login-password")
+    def on_password_submitted(self) -> None:
+        self._submit()
+
+    @on(Button.Pressed, "#connect-btn")
+    def on_connect(self) -> None:
+        self._submit()
+
+    @on(Button.Pressed, "#cancel-btn")
+    def on_cancel_btn(self) -> None:
+        self.dismiss(None)
+
+    def _submit(self) -> None:
+        username = self.query_one("#login-username", Input).value.strip()
+        password = self.query_one("#login-password", Input).value
+        self.dismiss((username, password))
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
 @dataclass
 class SearchResult:
     """A search result item."""
@@ -684,6 +795,10 @@ class TraefikTUI(App):
     ) -> None:
         super().__init__()
         self._direct_mode = direct_url is not None
+        self._direct_url = direct_url
+        self._pending_username = direct_username or ""
+        self._pending_password = direct_password or ""
+        self._needs_login = self._direct_mode and not (direct_username and direct_password)
         self.settings = Settings.load()
 
         # In direct mode, create a temporary profile
@@ -801,6 +916,46 @@ class TraefikTUI(App):
         """Initialize the app after mounting."""
         self._refresh_profile_list()
         self._update_title_bar()
+
+        # Show login screen if credentials are needed
+        if self._needs_login:
+            self._show_login_screen()
+            return
+
+        self._complete_startup()
+
+    def _show_login_screen(self) -> None:
+        """Show the login screen for credential entry."""
+        self.push_screen(
+            LoginScreen(
+                url=self._direct_url or "",
+                initial_username=self._pending_username,
+                initial_password=self._pending_password,
+            ),
+            self._on_login_complete,
+        )
+
+    def _on_login_complete(self, result: tuple[str, str] | None) -> None:
+        """Handle login screen result."""
+        if result is None:
+            # User cancelled - exit the app
+            self.exit()
+            return
+
+        username, password = result
+
+        # Update the profile with credentials
+        from .models import BasicAuth
+
+        profile = self.settings.profiles.get("direct")
+        if profile:
+            profile.basic_auth = BasicAuth(username=username, password=password)
+
+        self._needs_login = False
+        self._complete_startup()
+
+    def _complete_startup(self) -> None:
+        """Complete the app startup after login (if needed)."""
         self._start_monitor()
         # Trigger immediate connection check
         self._check_connection_now()
