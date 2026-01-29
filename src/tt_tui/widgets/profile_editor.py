@@ -174,9 +174,13 @@ class ProfileEditor(Vertical):
         # Check if we're switching to a different profile
         switching_profile = name != self._profile_name
 
-        self._profile_name = name
-        self._profile = profile
-        self._runtime = runtime or ProfileRuntime()
+        # Only update profile data when switching profiles to avoid
+        # overwriting user edits with stale data from periodic refreshes
+        if switching_profile:
+            self._profile_name = name
+            self._profile = profile
+        if runtime is not None:
+            self._runtime = runtime
 
         # Only update input fields when switching profiles
         if switching_profile:
