@@ -22,6 +22,7 @@ class SSHTunnelManager:
         self._tunnels: dict[str, asyncssh.SSHClientConnection] = {}
         self._listeners: dict[str, asyncssh.SSHListener] = {}
         self._local_ports: dict[str, int] = {}
+        self._configs: dict[str, SSHTunnel] = {}  # Store config to detect changes
         self._lock = asyncio.Lock()
 
     def _find_free_port(self) -> int:
@@ -30,20 +31,45 @@ class SSHTunnelManager:
             s.bind(("127.0.0.1", 0))
             return s.getsockname()[1]
 
+    def _is_connection_alive(self, profile_name: str) -> bool:
+        """Check if an existing SSH connection is still alive."""
+        if profile_name not in self._tunnels:
+            return False
+        conn = self._tunnels[profile_name]
+        # Check if connection is still open
+        try:
+            return conn.is_connected() if hasattr(conn, "is_connected") else not conn.is_closed()
+        except Exception:
+            return False
+
+    def _config_changed(self, profile_name: str, config: SSHTunnel) -> bool:
+        """Check if the tunnel configuration has changed."""
+        if profile_name not in self._configs:
+            return True
+        old = self._configs[profile_name]
+        return (
+            old.host != config.host
+            or old.port != config.port
+            or old.username != config.username
+            or old.identity_file != config.identity_file
+            or old.password != config.password
+            or old.remote_host != config.remote_host
+            or old.remote_port != config.remote_port
+            or (config.local_port > 0 and old.local_port != config.local_port)
+        )
+
     async def open_tunnel(
         self, profile_name: str, config: SSHTunnel
     ) -> tuple[TunnelStatus, int | None, str | None]:
         """
-        Open an SSH tunnel for a profile.
+        Open an SSH tunnel for a profile, reusing existing connection if available.
 
         Returns:
             Tuple of (status, local_port, error_message)
         """
         async with self._lock:
-            # Close existing tunnel if any
-            await self._close_tunnel_internal(profile_name)
-
             if not config.enabled:
+                await self._close_tunnel_internal(profile_name)
                 return TunnelStatus.CLOSED, None, None
 
             if not config.host:
@@ -51,6 +77,19 @@ class SSHTunnelManager:
 
             if not config.username:
                 return TunnelStatus.ERROR, None, "SSH username is required"
+
+            # Check if we can reuse the existing tunnel
+            if (
+                profile_name in self._tunnels
+                and self._is_connection_alive(profile_name)
+                and not self._config_changed(profile_name, config)
+            ):
+                # Reuse existing tunnel
+                local_port = self._local_ports.get(profile_name)
+                return TunnelStatus.OPEN, local_port, None
+
+            # Need to create a new tunnel - close any existing one first
+            await self._close_tunnel_internal(profile_name)
 
             try:
                 # Determine authentication method
@@ -93,6 +132,7 @@ class SSHTunnelManager:
                 )
                 self._listeners[profile_name] = listener
                 self._local_ports[profile_name] = local_port
+                self._configs[profile_name] = config  # Store config for comparison
 
                 return TunnelStatus.OPEN, local_port, None
 
@@ -125,6 +165,9 @@ class SSHTunnelManager:
 
         if profile_name in self._local_ports:
             del self._local_ports[profile_name]
+
+        if profile_name in self._configs:
+            del self._configs[profile_name]
 
     async def close_tunnel(self, profile_name: str) -> None:
         """Close an SSH tunnel for a profile."""
