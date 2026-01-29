@@ -114,6 +114,22 @@ class ProfileEditor(Vertical):
     ProfileEditor .port-row Input {
         width: 1fr;
     }
+
+    ProfileEditor #ssh-fields {
+        display: none;
+    }
+
+    ProfileEditor #ssh-fields.visible {
+        display: block;
+    }
+
+    ProfileEditor #tunnel-status-display {
+        display: none;
+    }
+
+    ProfileEditor #tunnel-status-display.visible {
+        display: block;
+    }
     """
 
     class ProfileChanged(Message):
@@ -272,10 +288,20 @@ class ProfileEditor(Vertical):
         self._update_tunnel_status_display()
 
     def _update_ssh_fields_state(self, enabled: bool) -> None:
-        """Enable or disable SSH fields based on the checkbox state."""
+        """Show or hide SSH fields based on the checkbox state."""
         ssh_fields = self.query_one("#ssh-fields", Vertical)
-        for input_widget in ssh_fields.query(Input):
-            input_widget.disabled = not enabled
+        tunnel_status = self.query_one("#tunnel-status-display", Static)
+
+        if enabled:
+            ssh_fields.add_class("visible")
+            tunnel_status.add_class("visible")
+            for input_widget in ssh_fields.query(Input):
+                input_widget.disabled = False
+        else:
+            ssh_fields.remove_class("visible")
+            tunnel_status.remove_class("visible")
+            for input_widget in ssh_fields.query(Input):
+                input_widget.disabled = True
 
     def _update_status_display(self) -> None:
         """Update the status display based on runtime state."""
