@@ -25,11 +25,35 @@ class BasicAuth(BaseModel):
     password: str = ""
 
 
+class SSHTunnel(BaseModel):
+    """SSH tunnel configuration for connecting to remote Traefik instances."""
+
+    enabled: bool = False
+    host: str = ""  # SSH server hostname
+    port: int = 22  # SSH server port
+    username: str = ""  # SSH username
+    identity_file: str = ""  # Path to private key file (optional)
+    password: str = ""  # SSH password (alternative to key)
+    remote_host: str = "localhost"  # Traefik host on the remote server
+    remote_port: int = 8080  # Traefik port on the remote server
+    local_port: int = 0  # Local port to forward (0 = auto-select)
+
+
+class TunnelStatus(str, Enum):
+    """Status of an SSH tunnel."""
+
+    CLOSED = "closed"
+    CONNECTING = "connecting"
+    OPEN = "open"
+    ERROR = "error"
+
+
 class Profile(BaseModel):
     """A Traefik connection profile."""
 
     url: str = "http://localhost:8080"
     basic_auth: BasicAuth | None = None
+    ssh_tunnel: SSHTunnel | None = None
 
 
 class ProfileRuntime(BaseModel):
@@ -38,6 +62,9 @@ class ProfileRuntime(BaseModel):
     status: ConnectionStatus = ConnectionStatus.DISCONNECTED
     version: str | None = None
     error: str | None = None
+    tunnel_status: TunnelStatus = TunnelStatus.CLOSED
+    tunnel_error: str | None = None
+    tunnel_local_port: int | None = None  # The actual local port being used
 
 
 _VALID_TABS = frozenset({"entrypoints", "routers", "services", "middleware", "info", "settings"})

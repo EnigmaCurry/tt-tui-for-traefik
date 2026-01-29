@@ -25,8 +25,8 @@ from textual.widgets import (
 )
 
 from .api import Middleware, Service, TraefikAPI, TraefikAPIError
-from .models import ConnectionStatus, Profile, ProfileRuntime, Settings
-from .monitor import check_connection
+from .models import ConnectionStatus, Profile, ProfileRuntime, Settings, SSHTunnel
+from .monitor import check_connection, close_all_tunnels, close_tunnel, get_effective_url
 from .widgets import (
     EntrypointsView,
     InfoView,
@@ -667,6 +667,7 @@ class TraefikTUI(App):
         direct_url: str | None = None,
         direct_username: str | None = None,
         direct_password: str | None = None,
+        direct_ssh_tunnel: SSHTunnel | None = None,
     ) -> None:
         super().__init__()
         self._direct_mode = direct_url is not None
@@ -682,7 +683,13 @@ class TraefikTUI(App):
                     username=direct_username or "",
                     password=direct_password or "",
                 )
-            self.settings.profiles = {"direct": Profile(url=direct_url, basic_auth=basic_auth)}
+            self.settings.profiles = {
+                "direct": Profile(
+                    url=direct_url,
+                    basic_auth=basic_auth,
+                    ssh_tunnel=direct_ssh_tunnel,
+                )
+            }
             self.settings.selected_profile = "direct"
             # Don't start on settings tab in direct mode
             if self.settings.active_tab == "settings":
@@ -1059,14 +1066,23 @@ class TraefikTUI(App):
     def on_profile_selected(self, event: ProfileList.ProfileSelected) -> None:
         """Handle profile selection."""
         if event.profile_name != self.settings.selected_profile:
+            old_profile = self.settings.selected_profile
             self.settings.selected_profile = event.profile_name
             self._dirty = True
             self._consecutive_errors = 0
+            # Close tunnel for old profile if it had one
+            if old_profile:
+                self._close_profile_tunnel(old_profile)
             self._refresh_profile_list()
             # Trigger an immediate connection check
             self._check_connection_now()
             # Refresh current tab data
             self._refresh_current_tab()
+
+    @work(exclusive=True, group="tunnel-close")
+    async def _close_profile_tunnel(self, profile_name: str) -> None:
+        """Close SSH tunnel for a specific profile."""
+        await close_tunnel(profile_name)
 
     @on(ProfileList.ProfileCreate)
     def on_profile_create(self, event: ProfileList.ProfileCreate) -> None:
@@ -1140,7 +1156,8 @@ class TraefikTUI(App):
         self._set_api_status(ApiStatus.LOADING)
 
         try:
-            api = TraefikAPI(profile.url, profile.basic_auth)
+            effective_url = get_effective_url(selected, profile.url, profile.ssh_tunnel)
+            api = TraefikAPI(effective_url, profile.basic_auth)
             http_routers = await api.get_http_routers()
             tcp_routers = await api.get_tcp_routers()
             udp_routers = await api.get_udp_routers()
@@ -1200,7 +1217,8 @@ class TraefikTUI(App):
         self._set_api_status(ApiStatus.LOADING)
 
         try:
-            api = TraefikAPI(profile.url, profile.basic_auth)
+            effective_url = get_effective_url(selected, profile.url, profile.ssh_tunnel)
+            api = TraefikAPI(effective_url, profile.basic_auth)
             if router_type == "tcp":
                 detail = await api.get_tcp_router(router_name)
             elif router_type == "udp":
@@ -1235,7 +1253,8 @@ class TraefikTUI(App):
         self._set_api_status(ApiStatus.LOADING)
 
         try:
-            api = TraefikAPI(profile.url, profile.basic_auth)
+            effective_url = get_effective_url(selected, profile.url, profile.ssh_tunnel)
+            api = TraefikAPI(effective_url, profile.basic_auth)
             http_services = await api.get_http_services()
             tcp_services = await api.get_tcp_services()
             udp_services = await api.get_udp_services()
@@ -1295,7 +1314,8 @@ class TraefikTUI(App):
         self._set_api_status(ApiStatus.LOADING)
 
         try:
-            api = TraefikAPI(profile.url, profile.basic_auth)
+            effective_url = get_effective_url(selected, profile.url, profile.ssh_tunnel)
+            api = TraefikAPI(effective_url, profile.basic_auth)
             if service_type == "tcp":
                 detail = await api.get_tcp_service(service_name)
             elif service_type == "udp":
@@ -1330,7 +1350,8 @@ class TraefikTUI(App):
         self._set_api_status(ApiStatus.LOADING)
 
         try:
-            api = TraefikAPI(profile.url, profile.basic_auth)
+            effective_url = get_effective_url(selected, profile.url, profile.ssh_tunnel)
+            api = TraefikAPI(effective_url, profile.basic_auth)
             entrypoints = await api.get_entrypoints()
 
             # Fetch routers, services, middlewares to build usage stats per entrypoint
@@ -1473,7 +1494,8 @@ class TraefikTUI(App):
         self._set_api_status(ApiStatus.LOADING)
 
         try:
-            api = TraefikAPI(profile.url, profile.basic_auth)
+            effective_url = get_effective_url(selected, profile.url, profile.ssh_tunnel)
+            api = TraefikAPI(effective_url, profile.basic_auth)
             detail = await api.get_entrypoint(entrypoint_name)
 
             entrypoints_view = self.query_one("#entrypoints-view", EntrypointsView)
@@ -1503,7 +1525,8 @@ class TraefikTUI(App):
         self._set_api_status(ApiStatus.LOADING)
 
         try:
-            api = TraefikAPI(profile.url, profile.basic_auth)
+            effective_url = get_effective_url(selected, profile.url, profile.ssh_tunnel)
+            api = TraefikAPI(effective_url, profile.basic_auth)
             http_middlewares = await api.get_http_middlewares()
             tcp_middlewares = await api.get_tcp_middlewares()
 
@@ -1555,7 +1578,8 @@ class TraefikTUI(App):
         self._set_api_status(ApiStatus.LOADING)
 
         try:
-            api = TraefikAPI(profile.url, profile.basic_auth)
+            effective_url = get_effective_url(selected, profile.url, profile.ssh_tunnel)
+            api = TraefikAPI(effective_url, profile.basic_auth)
             version = await api.get_version()
             overview = await api.get_overview()
 
@@ -1640,7 +1664,8 @@ class TraefikTUI(App):
         self._set_api_status(ApiStatus.LOADING)
 
         try:
-            api = TraefikAPI(profile.url, profile.basic_auth)
+            effective_url = get_effective_url(selected, profile.url, profile.ssh_tunnel)
+            api = TraefikAPI(effective_url, profile.basic_auth)
             if middleware_type == "tcp":
                 detail = await api.get_tcp_middleware(middleware_name)
             else:
@@ -1669,8 +1694,13 @@ class TraefikTUI(App):
         self._update_editor()
         self._set_api_status(ApiStatus.LOADING)
 
-        # Check the connection
-        runtime = await check_connection(profile.url, profile.basic_auth)
+        # Check the connection (with SSH tunnel if configured)
+        runtime = await check_connection(
+            profile.url,
+            profile.basic_auth,
+            profile_name=selected,
+            ssh_tunnel=profile.ssh_tunnel,
+        )
         self._runtime[selected] = runtime
         self._update_editor()
 
@@ -1700,8 +1730,13 @@ class TraefikTUI(App):
         if not profile.url:
             return
 
-        # Refresh connection status
-        runtime = await check_connection(profile.url, profile.basic_auth)
+        # Refresh connection status (with SSH tunnel if configured)
+        runtime = await check_connection(
+            profile.url,
+            profile.basic_auth,
+            profile_name=selected,
+            ssh_tunnel=profile.ssh_tunnel,
+        )
         self._runtime[selected] = runtime
         self._update_editor()
 
@@ -1806,7 +1841,14 @@ class TraefikTUI(App):
         """Quit the application."""
         if self._dirty and not self._direct_mode:
             self.settings.save()
+        # Close all SSH tunnels
+        self._cleanup_tunnels()
         self.exit()
+
+    @work(exclusive=True, group="cleanup")
+    async def _cleanup_tunnels(self) -> None:
+        """Close all SSH tunnels on exit."""
+        await close_all_tunnels()
 
     def action_search(self) -> None:
         """Open the global search modal."""
@@ -1916,11 +1958,59 @@ def main() -> None:
         type=str,
         help="HTTP basic auth password (requires --url)",
     )
+    # SSH tunnel arguments
+    parser.add_argument(
+        "--ssh-host",
+        type=str,
+        help="SSH server hostname for tunnel (requires --url)",
+    )
+    parser.add_argument(
+        "--ssh-port",
+        type=int,
+        default=22,
+        help="SSH server port (default: 22)",
+    )
+    parser.add_argument(
+        "--ssh-user",
+        type=str,
+        help="SSH username for tunnel",
+    )
+    parser.add_argument(
+        "--ssh-password",
+        type=str,
+        help="SSH password for tunnel (alternative to --ssh-key)",
+    )
+    parser.add_argument(
+        "--ssh-key",
+        type=str,
+        help="Path to SSH private key file",
+    )
+    parser.add_argument(
+        "--ssh-remote-host",
+        type=str,
+        default="localhost",
+        help="Remote host for tunnel (default: localhost)",
+    )
+    parser.add_argument(
+        "--ssh-remote-port",
+        type=int,
+        default=8080,
+        help="Remote port for tunnel (default: 8080)",
+    )
     args = parser.parse_args()
 
     # Validate auth args require --url
     if (args.username or args.password) and not args.url:
         parser.error("--username and --password require --url")
+
+    # Validate SSH args require --url
+    ssh_args = [args.ssh_host, args.ssh_user, args.ssh_password, args.ssh_key]
+    if any(ssh_args) and not args.url:
+        parser.error("SSH tunnel options require --url")
+
+    # Validate SSH host requires SSH user
+    if args.ssh_host and not args.ssh_user:
+        parser.error("--ssh-host requires --ssh-user")
 
     deep_link = None
     if args.link:
@@ -1928,11 +2018,28 @@ def main() -> None:
         if deep_link is None:
             parser.error(f"Invalid link format: {args.link}")
 
+    # Build SSH tunnel config if specified
+    ssh_tunnel = None
+    if args.ssh_host:
+        from .models import SSHTunnel
+
+        ssh_tunnel = SSHTunnel(
+            enabled=True,
+            host=args.ssh_host,
+            port=args.ssh_port,
+            username=args.ssh_user or "",
+            password=args.ssh_password or "",
+            identity_file=args.ssh_key or "",
+            remote_host=args.ssh_remote_host,
+            remote_port=args.ssh_remote_port,
+        )
+
     app = TraefikTUI(
         deep_link=deep_link,
         direct_url=args.url,
         direct_username=args.username,
         direct_password=args.password,
+        direct_ssh_tunnel=ssh_tunnel,
     )
     app.run()
 
