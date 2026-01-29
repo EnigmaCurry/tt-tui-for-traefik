@@ -41,12 +41,6 @@ class ProfileEditor(Vertical):
         height: 3;
     }
 
-    ProfileEditor .status-section {
-        height: auto;
-        padding: 0 1;
-        border-top: solid $primary-darken-2;
-    }
-
     ProfileEditor VerticalScroll {
         height: 1fr;
     }
@@ -75,20 +69,6 @@ class ProfileEditor(Vertical):
         padding: 1;
         color: $text-muted;
         text-align: center;
-    }
-
-    ProfileEditor .section-header {
-        padding: 0 1;
-        color: $text-muted;
-        text-style: bold;
-    }
-
-    ProfileEditor .ssh-toggle {
-        padding: 0 1;
-    }
-
-    ProfileEditor .tunnel-status {
-        padding: 0 1;
     }
 
     ProfileEditor .tunnel-open {
@@ -159,32 +139,30 @@ class ProfileEditor(Vertical):
                 yield Label("Password", classes="field-label")
                 yield Input(placeholder="(optional)", password=True, id="password-input")
 
-            # SSH Tunnel section
-            yield Static("SSH Tunnel", classes="section-header")
-            with Vertical(classes="ssh-toggle"):
+                # SSH Tunnel section
                 yield Checkbox("Enable SSH tunnel", id="ssh-enabled")
-            with Vertical(classes="field-group", id="ssh-fields"):
-                yield Label("SSH Host", classes="field-label")
-                yield Input(placeholder="~/.ssh/config Host name", id="ssh-host-input")
 
-                with Horizontal(classes="port-row"):
-                    with Vertical():
-                        yield Label("Remote Host", classes="field-label")
-                        yield Input(placeholder="localhost", id="ssh-remote-host-input")
-                    with Vertical():
-                        yield Label("Remote Port", classes="field-label")
-                        yield Input(placeholder="8080", id="ssh-remote-port-input")
+                with Vertical(id="ssh-fields"):
+                    yield Label("SSH Host", classes="field-label")
+                    yield Input(placeholder="~/.ssh/config Host name", id="ssh-host-input")
 
-                yield Label("Local Port", classes="field-label")
-                yield Input(placeholder="auto", id="ssh-local-port-input")
+                    with Horizontal(classes="port-row"):
+                        with Vertical():
+                            yield Label("Remote Host", classes="field-label")
+                            yield Input(placeholder="localhost", id="ssh-remote-host-input")
+                        with Vertical():
+                            yield Label("Remote Port", classes="field-label")
+                            yield Input(placeholder="8080", id="ssh-remote-port-input")
 
-            with Vertical(classes="tunnel-status"):
+                    yield Label("Local Port", classes="field-label")
+                    yield Input(placeholder="auto", id="ssh-local-port-input")
+
                 yield Static("", id="tunnel-status-display", classes="tunnel-closed")
 
-        with Vertical(classes="status-section"):
-            yield Static("Status", classes="field-label")
-            yield Static("Disconnected", id="status-display", classes="status-disconnected")
-            yield Static("", id="version-display", classes="version")
+                # Status section
+                yield Static("Status", classes="field-label")
+                yield Static("Disconnected", id="status-display", classes="status-disconnected")
+                yield Static("", id="version-display", classes="version")
 
     def set_profile(
         self, name: str | None, profile: Profile | None, runtime: ProfileRuntime | None = None
