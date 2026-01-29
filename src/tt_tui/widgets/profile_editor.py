@@ -37,6 +37,7 @@ class ProfileEditor(Vertical):
 
     ProfileEditor Input {
         margin-bottom: 1;
+        height: 3;
     }
 
     ProfileEditor .status-section {
