@@ -51,7 +51,13 @@ async def check_connection(
         runtime.error = "Connection timed out"
     except TraefikConnectionError:
         runtime.status = ConnectionStatus.DISCONNECTED
-        runtime.error = "Unable to connect"
+        # Provide more helpful error message when using SSH tunnel
+        if ssh_tunnel and ssh_tunnel.enabled:
+            runtime.error = (
+                f"Tunnel OK, but can't reach {ssh_tunnel.remote_host}:{ssh_tunnel.remote_port}"
+            )
+        else:
+            runtime.error = "Unable to connect"
     except TraefikHTTPError as e:
         runtime.status = ConnectionStatus.ERROR
         runtime.error = f"HTTP {e.status_code}"
