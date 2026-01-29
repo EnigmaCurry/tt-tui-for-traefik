@@ -75,3 +75,21 @@ async def close_all_tunnels() -> None:
 def get_effective_url(profile_name: str, url: str, ssh_tunnel: SSHTunnel | None) -> str:
     """Get the effective URL for API calls, considering SSH tunnel."""
     return tunnel_manager.get_effective_url(profile_name, url, ssh_tunnel)
+
+
+async def ensure_tunnel_and_get_url(
+    profile_name: str, url: str, ssh_tunnel: SSHTunnel | None
+) -> str:
+    """Ensure SSH tunnel is open (if configured) and return the effective URL.
+
+    This async function should be used by data refresh methods to ensure the tunnel
+    is established before making API calls.
+    """
+    if ssh_tunnel and ssh_tunnel.enabled:
+        # Ensure tunnel is open
+        tunnel_status, local_port, _ = await tunnel_manager.open_tunnel(profile_name, ssh_tunnel)
+        if tunnel_status == TunnelStatus.OPEN and local_port:
+            return f"http://127.0.0.1:{local_port}"
+        # If tunnel failed to open, fall through to return original URL
+        # (the API call will fail, but that's expected)
+    return url
