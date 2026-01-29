@@ -214,13 +214,21 @@ class TitleBar(Horizontal):
         label = self.query_one("#title-profile", Static)
         label.update(profile_name or "No profile")
 
-    def update_connection_status(self, status: ConnectionStatus, error: str | None = None) -> None:
+    def update_connection_status(
+        self,
+        status: ConnectionStatus,
+        error: str | None = None,
+        ssh_host: str | None = None,
+    ) -> None:
         """Update the connection status display."""
         status_label = self.query_one("#title-status", Static)
         status_label.remove_class("connected", "disconnected", "error", "connecting")
 
         if status == ConnectionStatus.CONNECTED:
-            status_label.update(" :: Connected")
+            if ssh_host:
+                status_label.update(f" :: Connected via {ssh_host}")
+            else:
+                status_label.update(" :: Connected")
             status_label.add_class("connected")
         elif status == ConnectionStatus.CONNECTING:
             status_label.update(" :: Connecting...")
@@ -833,7 +841,16 @@ class TraefikTUI(App):
         # Update connection status
         if selected and selected in self._runtime:
             runtime = self._runtime[selected]
-            title_bar.update_connection_status(runtime.status, runtime.error)
+            # Check if connected via SSH tunnel
+            ssh_host = None
+            if (
+                runtime.status == ConnectionStatus.CONNECTED
+                and selected in self.settings.profiles
+            ):
+                profile = self.settings.profiles[selected]
+                if profile.ssh_tunnel and profile.ssh_tunnel.enabled:
+                    ssh_host = profile.ssh_tunnel.host
+            title_bar.update_connection_status(runtime.status, runtime.error, ssh_host)
         else:
             title_bar.update_connection_status(ConnectionStatus.DISCONNECTED)
 
