@@ -2048,10 +2048,6 @@ def main() -> None:
     if any(ssh_args) and not args.url:
         parser.error("SSH tunnel options require --url")
 
-    # Validate SSH host requires SSH user
-    if args.ssh_host and not args.ssh_user:
-        parser.error("--ssh-host requires --ssh-user")
-
     deep_link = None
     if args.link:
         deep_link = DeepLink.parse(args.link)
