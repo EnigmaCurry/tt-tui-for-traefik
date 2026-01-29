@@ -327,14 +327,32 @@ class ProfileEditor(Vertical):
     @on(Input.Changed)
     def on_input_changed(self, event: Input.Changed) -> None:
         """Handle input changes."""
-        # For SSH fields, defer sync until blur to avoid reconnecting on every keystroke
+        # For SSH fields, defer sync until blur/submit to avoid reconnecting on every keystroke
         if event.input.id in _SSH_FIELD_IDS:
             return
         self._sync_profile_from_inputs()
 
+    @on(Input.Submitted)
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Handle Enter key on inputs - immediately sync SSH fields."""
+        if event.input.id in _SSH_FIELD_IDS:
+            self._sync_profile_from_inputs()
+
     def on_blur(self, event: Blur) -> None:
         """Handle blur events for SSH fields."""
-        if isinstance(event.widget, Input) and event.widget.id in _SSH_FIELD_IDS:
+        # Check multiple possible attributes for the widget that lost focus
+        widget = getattr(event, 'widget', None)
+        if widget is self:
+            # Event bubbled up - check if we can find the original sender
+            # In Textual, when Blur bubbles, we need to check the focused history
+            return
+        if isinstance(widget, Input) and widget.id in _SSH_FIELD_IDS:
+            self._sync_profile_from_inputs()
+
+    def on_descendant_blur(self, event: Blur) -> None:
+        """Handle blur events from descendant widgets."""
+        widget = getattr(event, 'widget', None)
+        if isinstance(widget, Input) and widget.id in _SSH_FIELD_IDS:
             self._sync_profile_from_inputs()
 
     def _sync_profile_from_inputs(self) -> None:
