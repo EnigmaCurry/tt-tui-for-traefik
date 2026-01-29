@@ -1,8 +1,6 @@
 """Main TT TUI application."""
 
 import argparse
-
-from . import __version__
 from dataclasses import dataclass
 from enum import Enum
 
@@ -26,6 +24,7 @@ from textual.widgets import (
     Tabs,
 )
 
+from . import __version__
 from .api import Middleware, Service, TraefikAPI, TraefikAPIError
 from .models import ConnectionStatus, Profile, ProfileRuntime, Settings, SSHTunnel
 from .monitor import (
