@@ -1866,10 +1866,10 @@ class TraefikTUI(App):
             self._clear_all_notifications()
         else:
             self._set_api_status(ApiStatus.ERROR)
-            # Check for authentication failure (401/403)
-            if runtime.error in ("HTTP 401", "HTTP 403"):
+            # Check for authentication failure (401/403) - show login only in direct mode
+            if runtime.error in ("HTTP 401", "HTTP 403") and self._direct_mode:
                 self._show_login_screen()
-            # Navigate to Settings on first connection failure
+            # Navigate to Settings on first connection failure (not in direct mode)
             elif not self._first_connection_checked and not self._direct_mode:
                 self.settings.active_tab = "settings"
                 tabbed_content = self.query_one(TabbedContent)
