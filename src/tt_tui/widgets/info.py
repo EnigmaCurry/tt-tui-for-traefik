@@ -4,6 +4,7 @@ from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.widgets import Label, Static
 
+from .. import __version__
 from ..api import TraefikOverview, TraefikVersion
 
 # Project URL
@@ -65,7 +66,7 @@ class InfoView(Vertical):
         yield Static("Loading...", id="providers-content", classes="section-content")
         yield Label("Features", classes="section-header")
         yield Static("Loading...", id="features-content", classes="section-content")
-        yield Static(f"{PROJECT_URL}", id="project-url", classes="project-url")
+        yield Static(f"tt v{__version__}  {PROJECT_URL}", id="project-url", classes="project-url")
 
     def update_version(self, version: TraefikVersion) -> None:
         """Update the version display."""

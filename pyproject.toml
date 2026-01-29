@@ -1,6 +1,6 @@
 [project]
 name = "tt-tui-for-traefik"
-version = "0.1.1"
+version = "0.1.2"
 description = "A TUI dashboard for Traefik"
 readme = "README.md"
 license = "MIT"
