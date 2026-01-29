@@ -195,18 +195,9 @@ class ProfileEditor(Vertical):
             ssh_enabled.value = tunnel.enabled if tunnel else False
             ssh_enabled.disabled = False
             ssh_host.value = tunnel.host if tunnel else ""
-            if tunnel and tunnel.local_port > 0:
-                ssh_local_port.value = str(tunnel.local_port)
-            else:
-                ssh_local_port.value = ""
-            if tunnel and tunnel.remote_host != "localhost":
-                ssh_remote_host.value = tunnel.remote_host
-            else:
-                ssh_remote_host.value = ""
-            if tunnel and tunnel.remote_port != 8080:
-                ssh_remote_port.value = str(tunnel.remote_port)
-            else:
-                ssh_remote_port.value = ""
+            ssh_local_port.value = str(tunnel.local_port) if tunnel and tunnel.local_port > 0 else ""
+            ssh_remote_host.value = tunnel.remote_host if tunnel else "localhost"
+            ssh_remote_port.value = str(tunnel.remote_port) if tunnel else "8080"
 
             # Enable/disable SSH fields based on checkbox
             self._update_ssh_fields_state(ssh_enabled.value)
