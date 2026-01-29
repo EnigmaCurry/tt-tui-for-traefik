@@ -89,24 +89,18 @@ class SSHTunnelManager:
             await self._close_tunnel_internal(profile_name)
 
             try:
-                # Load SSH config to get host settings (username, port, hostname, etc.)
+                # Build connect kwargs
+                # Pass config path to let asyncssh read ~/.ssh/config for Host entries
                 ssh_config_path = Path("~/.ssh/config").expanduser()
-                config_paths = [str(ssh_config_path)] if ssh_config_path.exists() else []
 
-                # Use SSHClientConnectionOptions to properly read SSH config
-                options = asyncssh.SSHClientConnectionOptions()
-                options.load(
-                    host=config.host,
-                    config_paths=config_paths if config_paths else None,
-                    reload=True,
-                )
-
-                # Build connect kwargs - let options handle config-based values
                 connect_kwargs: dict = {
                     "host": config.host,
                     "known_hosts": None,  # Accept any host key
-                    "options": options,
                 }
+
+                # Pass SSH config file path (asyncssh will read Host entries for user, port, etc.)
+                if ssh_config_path.exists():
+                    connect_kwargs["config"] = str(ssh_config_path)
 
                 # Only override port if explicitly provided (not default 22)
                 if config.port and config.port != 22:
