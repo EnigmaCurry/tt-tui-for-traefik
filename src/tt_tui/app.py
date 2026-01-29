@@ -795,10 +795,6 @@ class TraefikTUI(App):
     ) -> None:
         super().__init__()
         self._direct_mode = direct_url is not None
-        self._direct_url = direct_url
-        self._pending_username = direct_username or ""
-        self._pending_password = direct_password or ""
-        self._needs_login = self._direct_mode and not (direct_username and direct_password)
         self.settings = Settings.load()
 
         # In direct mode, create a temporary profile
@@ -916,46 +912,6 @@ class TraefikTUI(App):
         """Initialize the app after mounting."""
         self._refresh_profile_list()
         self._update_title_bar()
-
-        # Show login screen if credentials are needed
-        if self._needs_login:
-            self._show_login_screen()
-            return
-
-        self._complete_startup()
-
-    def _show_login_screen(self) -> None:
-        """Show the login screen for credential entry."""
-        self.push_screen(
-            LoginScreen(
-                url=self._direct_url or "",
-                initial_username=self._pending_username,
-                initial_password=self._pending_password,
-            ),
-            self._on_login_complete,
-        )
-
-    def _on_login_complete(self, result: tuple[str, str] | None) -> None:
-        """Handle login screen result."""
-        if result is None:
-            # User cancelled - exit the app
-            self.exit()
-            return
-
-        username, password = result
-
-        # Update the profile with credentials
-        from .models import BasicAuth
-
-        profile = self.settings.profiles.get("direct")
-        if profile:
-            profile.basic_auth = BasicAuth(username=username, password=password)
-
-        self._needs_login = False
-        self._complete_startup()
-
-    def _complete_startup(self) -> None:
-        """Complete the app startup after login (if needed)."""
         self._start_monitor()
         # Trigger immediate connection check
         self._check_connection_now()
@@ -1903,13 +1859,59 @@ class TraefikTUI(App):
             self._set_api_status(ApiStatus.SUCCESS)
         else:
             self._set_api_status(ApiStatus.ERROR)
+            # Check for authentication failure (401/403)
+            if runtime.error in ("HTTP 401", "HTTP 403"):
+                self._show_login_screen()
             # Navigate to Settings on first connection failure
-            if not self._first_connection_checked and not self._direct_mode:
+            elif not self._first_connection_checked and not self._direct_mode:
                 self.settings.active_tab = "settings"
                 tabbed_content = self.query_one(TabbedContent)
                 tabbed_content.active = "settings"
 
         self._first_connection_checked = True
+
+    def _show_login_screen(self) -> None:
+        """Show the login screen for credential entry after auth failure."""
+        selected = self.settings.selected_profile
+        if not selected or selected not in self.settings.profiles:
+            return
+
+        profile = self.settings.profiles[selected]
+        current_username = ""
+        current_password = ""
+        if profile.basic_auth:
+            current_username = profile.basic_auth.username
+            current_password = profile.basic_auth.password
+
+        self.push_screen(
+            LoginScreen(
+                url=profile.url,
+                initial_username=current_username,
+                initial_password=current_password,
+            ),
+            self._on_login_complete,
+        )
+
+    def _on_login_complete(self, result: tuple[str, str] | None) -> None:
+        """Handle login screen result."""
+        if result is None:
+            # User cancelled
+            return
+
+        username, password = result
+
+        # Update the profile with new credentials
+        from .models import BasicAuth
+
+        selected = self.settings.selected_profile
+        if selected and selected in self.settings.profiles:
+            profile = self.settings.profiles[selected]
+            profile.basic_auth = BasicAuth(username=username, password=password)
+            self._dirty = True
+
+            # Retry connection with new credentials
+            self._check_connection_now()
+            self._refresh_current_tab()
 
     def _start_monitor(self) -> None:
         """Start the background connection monitor."""
