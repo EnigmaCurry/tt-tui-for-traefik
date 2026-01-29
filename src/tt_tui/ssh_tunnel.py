@@ -9,15 +9,6 @@ import asyncssh
 
 from .models import SSHTunnel, TunnelStatus
 
-# Debug log file
-_DEBUG_LOG = Path("/tmp/tt-ssh-debug.log")
-
-
-def _debug(msg: str) -> None:
-    """Write debug message to log file."""
-    with _DEBUG_LOG.open("a") as f:
-        f.write(msg + "\n")
-
 
 def _parse_ssh_config(config_path: Path, host: str) -> dict[str, str]:
     """Parse SSH config file and extract settings for a specific host.
@@ -26,14 +17,11 @@ def _parse_ssh_config(config_path: Path, host: str) -> dict[str, str]:
     """
     result: dict[str, str] = {}
     if not config_path.exists():
-        _debug(f"DEBUG: SSH config file does not exist: {config_path}")
         return result
 
     try:
         content = config_path.read_text()
-        _debug(f"DEBUG: SSH config file size: {len(content)} bytes")
-    except Exception as e:
-        _debug(f"DEBUG: Failed to read SSH config: {e}")
+    except Exception:
         return result
 
     # Split into Host blocks
@@ -54,8 +42,6 @@ def _parse_ssh_config(config_path: Path, host: str) -> dict[str, str]:
                     # Simple pattern matching (supports * wildcard)
                     pattern = h.replace("*", ".*")
                     if re.fullmatch(pattern, host, re.IGNORECASE):
-                        _debug(f"DEBUG: Host pattern '{h}' matched '{host}'")
-                        _debug(f"DEBUG: Settings from this block: {current_settings}")
                         # Merge settings (earlier matches take precedence)
                         for key, value in current_settings.items():
                             if key not in result:
@@ -79,14 +65,11 @@ def _parse_ssh_config(config_path: Path, host: str) -> dict[str, str]:
         for h in current_hosts:
             pattern = h.replace("*", ".*")
             if re.fullmatch(pattern, host, re.IGNORECASE):
-                _debug(f"DEBUG: Host pattern '{h}' matched '{host}' (last block)")
-                _debug(f"DEBUG: Settings from this block: {current_settings}")
                 for key, value in current_settings.items():
                     if key not in result:
                         result[key] = value
                 break
 
-    _debug(f"DEBUG: Final parsed result for host '{host}': {result}")
     return result
 
 
@@ -166,17 +149,9 @@ class SSHTunnelManager:
             await self._close_tunnel_internal(profile_name)
 
             try:
-                # Clear debug log for fresh run
-                _DEBUG_LOG.write_text("=== SSH Tunnel Debug Log ===\n")
-
                 # Parse SSH config to get host settings (hostname, user, port, etc.)
                 ssh_config_path = Path("~/.ssh/config").expanduser()
                 ssh_settings = _parse_ssh_config(ssh_config_path, config.host)
-
-                # DEBUG: Print parsed SSH config
-                _debug(f"DEBUG: SSH config path: {ssh_config_path}")
-                _debug(f"DEBUG: Looking for host: {config.host}")
-                _debug(f"DEBUG: Parsed ssh_settings: {ssh_settings}")
 
                 # Determine the actual hostname (from SSH config or use the host directly)
                 actual_host = ssh_settings.get("hostname", config.host)
@@ -189,9 +164,6 @@ class SSHTunnelManager:
                 # Get username from SSH config
                 if "user" in ssh_settings:
                     connect_kwargs["username"] = ssh_settings["user"]
-                    _debug(f"DEBUG: Using username from SSH config: '{ssh_settings['user']}'")
-                else:
-                    _debug("DEBUG: No username in SSH config, letting asyncssh default")
 
                 # Get port from SSH config
                 if "port" in ssh_settings:
@@ -205,12 +177,6 @@ class SSHTunnelManager:
                     key_path = Path(ssh_settings["identityfile"]).expanduser()
                     if key_path.exists():
                         connect_kwargs["client_keys"] = [str(key_path)]
-
-                # DEBUG: Print final connect kwargs (hide password)
-                debug_kwargs = {k: v for k, v in connect_kwargs.items() if k != "password"}
-                if "password" in connect_kwargs:
-                    debug_kwargs["password"] = "***"
-                _debug(f"DEBUG: Final connect_kwargs: {debug_kwargs}")
 
                 # Establish SSH connection
                 conn = await asyncssh.connect(**connect_kwargs)

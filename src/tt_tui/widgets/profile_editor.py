@@ -27,22 +27,23 @@ class ProfileEditor(Vertical):
     }
 
     ProfileEditor .field-group {
-        padding: 1 2;
+        padding: 0 1;
     }
 
     ProfileEditor .field-label {
         color: $text-muted;
-        padding-bottom: 0;
+        padding: 0;
+        margin: 0;
     }
 
     ProfileEditor Input {
-        margin-bottom: 1;
+        margin-bottom: 0;
         height: 3;
     }
 
     ProfileEditor .status-section {
         height: auto;
-        padding: 1 2;
+        padding: 0 1;
         border-top: solid $primary-darken-2;
     }
 
@@ -71,23 +72,23 @@ class ProfileEditor(Vertical):
     }
 
     ProfileEditor .no-profile {
-        padding: 2;
+        padding: 1;
         color: $text-muted;
         text-align: center;
     }
 
     ProfileEditor .section-header {
-        padding: 1 2 0 2;
+        padding: 0 1;
         color: $text-muted;
         text-style: bold;
     }
 
     ProfileEditor .ssh-toggle {
-        padding: 0 2;
+        padding: 0 1;
     }
 
     ProfileEditor .tunnel-status {
-        padding: 0 2 1 2;
+        padding: 0 1;
     }
 
     ProfileEditor .tunnel-open {
