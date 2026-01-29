@@ -7,6 +7,8 @@ from textual.events import Blur
 from textual.message import Message
 from textual.widgets import Checkbox, Input, Label, Static
 
+from ..models import ConnectionStatus, Profile, ProfileRuntime, TunnelStatus
+
 # SSH fields that should only sync on blur (not every keystroke)
 _SSH_FIELD_IDS = frozenset({
     "ssh-host-input",
@@ -14,8 +16,6 @@ _SSH_FIELD_IDS = frozenset({
     "ssh-remote-port-input",
     "ssh-local-port-input",
 })
-
-from ..models import ConnectionStatus, Profile, ProfileRuntime, TunnelStatus
 
 
 class ProfileEditor(Vertical):
@@ -208,7 +208,10 @@ class ProfileEditor(Vertical):
                 ssh_enabled.value = tunnel.enabled if tunnel else False
                 ssh_enabled.disabled = False
                 ssh_host.value = tunnel.host if tunnel else ""
-                ssh_local_port.value = str(tunnel.local_port) if tunnel and tunnel.local_port > 0 else ""
+                if tunnel and tunnel.local_port > 0:
+                    ssh_local_port.value = str(tunnel.local_port)
+                else:
+                    ssh_local_port.value = ""
                 ssh_remote_host.value = tunnel.remote_host if tunnel else "localhost"
                 ssh_remote_port.value = str(tunnel.remote_port) if tunnel else "8080"
 
