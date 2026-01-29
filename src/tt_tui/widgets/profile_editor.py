@@ -77,10 +77,8 @@ class ProfileEditor(Vertical):
 
     ProfileEditor .section-header {
         padding: 1 2 0 2;
-        color: $text;
+        color: $text-muted;
         text-style: bold;
-        border-top: solid $primary-darken-2;
-        margin-top: 1;
     }
 
     ProfileEditor .ssh-toggle {

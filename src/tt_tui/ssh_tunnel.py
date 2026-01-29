@@ -89,21 +89,30 @@ class SSHTunnelManager:
             await self._close_tunnel_internal(profile_name)
 
             try:
-                # Build connection kwargs - only include values if explicitly set
-                # Load SSH config from standard locations for host aliases, user, port, etc.
+                # Load SSH config to get host settings (username, port, hostname, etc.)
                 ssh_config_path = Path("~/.ssh/config").expanduser()
+                config_paths = [str(ssh_config_path)] if ssh_config_path.exists() else []
+
+                # Use SSHClientConnectionOptions to properly read SSH config
+                options = asyncssh.SSHClientConnectionOptions()
+                options.load(
+                    host=config.host,
+                    config_paths=config_paths if config_paths else None,
+                    reload=True,
+                )
+
+                # Build connect kwargs - let options handle config-based values
                 connect_kwargs: dict = {
                     "host": config.host,
                     "known_hosts": None,  # Accept any host key
+                    "options": options,
                 }
-                if ssh_config_path.exists():
-                    connect_kwargs["config"] = [str(ssh_config_path)]
 
-                # Only specify port if not using default (lets SSH config take precedence)
+                # Only override port if explicitly provided (not default 22)
                 if config.port and config.port != 22:
                     connect_kwargs["port"] = config.port
 
-                # Only specify username if explicitly provided
+                # Only override username if explicitly provided
                 if config.username:
                     connect_kwargs["username"] = config.username
 
@@ -119,9 +128,6 @@ class SSHTunnelManager:
                     connect_kwargs["client_keys"] = [str(key_path)]
                 elif config.password:
                     connect_kwargs["password"] = config.password
-                else:
-                    # Try default SSH agent / keys
-                    pass
 
                 # Establish SSH connection
                 conn = await asyncssh.connect(**connect_kwargs)
