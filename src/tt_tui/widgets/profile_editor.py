@@ -2,7 +2,7 @@
 
 from textual import on
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Vertical, VerticalScroll
 from textual.message import Message
 from textual.widgets import Checkbox, Input, Label, Static
 
@@ -87,14 +87,6 @@ class ProfileEditor(Vertical):
         color: $warning;
     }
 
-    ProfileEditor .port-row {
-        height: auto;
-    }
-
-    ProfileEditor .port-row Input {
-        width: 1fr;
-    }
-
     ProfileEditor #ssh-fields {
         display: none;
     }
@@ -146,13 +138,11 @@ class ProfileEditor(Vertical):
                     yield Label("SSH Host", classes="field-label")
                     yield Input(placeholder="~/.ssh/config Host name", id="ssh-host-input")
 
-                    with Horizontal(classes="port-row"):
-                        with Vertical():
-                            yield Label("Remote Host", classes="field-label")
-                            yield Input(placeholder="localhost", id="ssh-remote-host-input")
-                        with Vertical():
-                            yield Label("Remote Port", classes="field-label")
-                            yield Input(placeholder="8080", id="ssh-remote-port-input")
+                    yield Label("Remote Host", classes="field-label")
+                    yield Input(placeholder="localhost", id="ssh-remote-host-input")
+
+                    yield Label("Remote Port", classes="field-label")
+                    yield Input(placeholder="8080", id="ssh-remote-port-input")
 
                     yield Label("Local Port", classes="field-label")
                     yield Input(placeholder="auto", id="ssh-local-port-input")
