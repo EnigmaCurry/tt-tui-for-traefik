@@ -3,8 +3,17 @@
 from textual import on
 from textual.app import ComposeResult
 from textual.containers import Vertical, VerticalScroll
+from textual.events import Blur
 from textual.message import Message
 from textual.widgets import Checkbox, Input, Label, Static
+
+# SSH fields that should only sync on blur (not every keystroke)
+_SSH_FIELD_IDS = frozenset({
+    "ssh-host-input",
+    "ssh-remote-host-input",
+    "ssh-remote-port-input",
+    "ssh-local-port-input",
+})
 
 from ..models import ConnectionStatus, Profile, ProfileRuntime, TunnelStatus
 
@@ -314,7 +323,15 @@ class ProfileEditor(Vertical):
     @on(Input.Changed)
     def on_input_changed(self, event: Input.Changed) -> None:
         """Handle input changes."""
+        # For SSH fields, defer sync until blur to avoid reconnecting on every keystroke
+        if event.input.id in _SSH_FIELD_IDS:
+            return
         self._sync_profile_from_inputs()
+
+    def on_blur(self, event: Blur) -> None:
+        """Handle blur events for SSH fields."""
+        if isinstance(event.widget, Input) and event.widget.id in _SSH_FIELD_IDS:
+            self._sync_profile_from_inputs()
 
     def _sync_profile_from_inputs(self) -> None:
         """Sync profile data from all input fields."""
