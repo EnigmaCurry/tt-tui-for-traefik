@@ -90,12 +90,14 @@ class SSHTunnelManager:
 
             try:
                 # Build connection kwargs - only include values if explicitly set
-                # Use config=True to read from ~/.ssh/config for host aliases, user, port, etc.
+                # Load SSH config from standard locations for host aliases, user, port, etc.
+                ssh_config_path = Path("~/.ssh/config").expanduser()
                 connect_kwargs: dict = {
                     "host": config.host,
                     "known_hosts": None,  # Accept any host key
-                    "config": True,  # Read ~/.ssh/config for host settings
                 }
+                if ssh_config_path.exists():
+                    connect_kwargs["config"] = [str(ssh_config_path)]
 
                 # Only specify port if not using default (lets SSH config take precedence)
                 if config.port and config.port != 22:
