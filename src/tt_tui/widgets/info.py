@@ -60,15 +60,13 @@ class InfoView(Vertical):
 
     def compose(self) -> ComposeResult:
         yield Static("", id="summary-bar")
-        yield Label("TT Version", classes="section-header")
-        yield Static(__version__, id="tt-version-content", classes="section-content")
         yield Label("Traefik Version", classes="section-header")
         yield Static("Loading...", id="version-content", classes="section-content")
         yield Label("Enabled Providers", classes="section-header")
         yield Static("Loading...", id="providers-content", classes="section-content")
         yield Label("Features", classes="section-header")
         yield Static("Loading...", id="features-content", classes="section-content")
-        yield Static(f"{PROJECT_URL}", id="project-url", classes="project-url")
+        yield Static(f"tt v{__version__}  {PROJECT_URL}", id="project-url", classes="project-url")
 
     def update_version(self, version: TraefikVersion) -> None:
         """Update the version display."""
