@@ -1,12 +1,76 @@
 """SSH tunnel management for remote Traefik connections."""
 
 import asyncio
+import re
 import socket
 from pathlib import Path
 
 import asyncssh
 
 from .models import SSHTunnel, TunnelStatus
+
+
+def _parse_ssh_config(config_path: Path, host: str) -> dict[str, str]:
+    """Parse SSH config file and extract settings for a specific host.
+
+    Returns a dict with keys like 'hostname', 'user', 'port', 'identityfile'.
+    """
+    result: dict[str, str] = {}
+    if not config_path.exists():
+        return result
+
+    try:
+        content = config_path.read_text()
+    except Exception:
+        return result
+
+    # Split into Host blocks
+    current_hosts: list[str] = []
+    current_settings: dict[str, str] = {}
+
+    for line in content.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+
+        # Check for Host directive
+        host_match = re.match(r"^Host\s+(.+)$", line, re.IGNORECASE)
+        if host_match:
+            # Save previous block if it matches our host
+            if current_hosts:
+                for h in current_hosts:
+                    # Simple pattern matching (supports * wildcard)
+                    pattern = h.replace("*", ".*")
+                    if re.fullmatch(pattern, host, re.IGNORECASE):
+                        # Merge settings (earlier matches take precedence)
+                        for key, value in current_settings.items():
+                            if key not in result:
+                                result[key] = value
+                        break
+
+            # Start new block
+            current_hosts = host_match.group(1).split()
+            current_settings = {}
+            continue
+
+        # Parse key-value settings
+        setting_match = re.match(r"^(\w+)\s+(.+)$", line)
+        if setting_match:
+            key = setting_match.group(1).lower()
+            value = setting_match.group(2).strip()
+            current_settings[key] = value
+
+    # Handle last block
+    if current_hosts:
+        for h in current_hosts:
+            pattern = h.replace("*", ".*")
+            if re.fullmatch(pattern, host, re.IGNORECASE):
+                for key, value in current_settings.items():
+                    if key not in result:
+                        result[key] = value
+                break
+
+    return result
 
 
 class SSHTunnelError(Exception):
@@ -89,28 +153,34 @@ class SSHTunnelManager:
             await self._close_tunnel_internal(profile_name)
 
             try:
-                # Build connect kwargs
-                # Pass config path to let asyncssh read ~/.ssh/config for Host entries
+                # Parse SSH config to get host settings (hostname, user, port, etc.)
                 ssh_config_path = Path("~/.ssh/config").expanduser()
+                ssh_settings = _parse_ssh_config(ssh_config_path, config.host)
+
+                # Determine the actual hostname (from SSH config or use the host directly)
+                actual_host = ssh_settings.get("hostname", config.host)
 
                 connect_kwargs: dict = {
-                    "host": config.host,
+                    "host": actual_host,
                     "known_hosts": None,  # Accept any host key
                 }
 
-                # Pass SSH config file path (asyncssh will read Host entries for user, port, etc.)
-                if ssh_config_path.exists():
-                    connect_kwargs["config"] = str(ssh_config_path)
-
-                # Only override port if explicitly provided (not default 22)
-                if config.port and config.port != 22:
-                    connect_kwargs["port"] = config.port
-
-                # Only override username if explicitly provided
+                # Get username: explicit config > SSH config > let asyncssh default
                 if config.username:
                     connect_kwargs["username"] = config.username
+                elif "user" in ssh_settings:
+                    connect_kwargs["username"] = ssh_settings["user"]
 
-                # Prefer identity file if provided
+                # Get port: explicit config > SSH config > default
+                if config.port and config.port != 22:
+                    connect_kwargs["port"] = config.port
+                elif "port" in ssh_settings:
+                    try:
+                        connect_kwargs["port"] = int(ssh_settings["port"])
+                    except ValueError:
+                        pass
+
+                # Get identity file: explicit config > SSH config
                 if config.identity_file:
                     key_path = Path(config.identity_file).expanduser()
                     if not key_path.exists():
@@ -120,6 +190,10 @@ class SSHTunnelManager:
                             f"Key file not found: {config.identity_file}",
                         )
                     connect_kwargs["client_keys"] = [str(key_path)]
+                elif "identityfile" in ssh_settings:
+                    key_path = Path(ssh_settings["identityfile"]).expanduser()
+                    if key_path.exists():
+                        connect_kwargs["client_keys"] = [str(key_path)]
                 elif config.password:
                     connect_kwargs["password"] = config.password
 
