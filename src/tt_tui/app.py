@@ -458,9 +458,7 @@ class LoginScreen(ModalScreen[tuple[str, str] | None]):
             yield Label("Username", classes="field-label")
             yield Input(value=self._initial_username, id="login-username")
             yield Label("Password", classes="field-label")
-            yield Input(
-                value=self._initial_password, password=True, id="login-password"
-            )
+            yield Input(value=self._initial_password, password=True, id="login-password")
             with Horizontal():
                 yield Button("Connect", variant="primary", id="connect-btn")
                 yield Button("Cancel", variant="default", id="cancel-btn")
@@ -959,10 +957,7 @@ class TraefikTUI(App):
             runtime = self._runtime[selected]
             # Check if connected via SSH tunnel
             ssh_host = None
-            if (
-                runtime.status == ConnectionStatus.CONNECTED
-                and selected in self.settings.profiles
-            ):
+            if runtime.status == ConnectionStatus.CONNECTED and selected in self.settings.profiles:
                 profile = self.settings.profiles[selected]
                 if profile.ssh_tunnel and profile.ssh_tunnel.enabled:
                     ssh_host = profile.ssh_tunnel.host

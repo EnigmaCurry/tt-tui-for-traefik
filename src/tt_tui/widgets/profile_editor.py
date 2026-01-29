@@ -10,12 +10,14 @@ from textual.widgets import Checkbox, Input, Label, Static
 from ..models import ConnectionStatus, Profile, ProfileRuntime, TunnelStatus
 
 # SSH fields that should only sync on blur (not every keystroke)
-_SSH_FIELD_IDS = frozenset({
-    "ssh-host-input",
-    "ssh-remote-host-input",
-    "ssh-remote-port-input",
-    "ssh-local-port-input",
-})
+_SSH_FIELD_IDS = frozenset(
+    {
+        "ssh-host-input",
+        "ssh-remote-host-input",
+        "ssh-remote-port-input",
+        "ssh-local-port-input",
+    }
+)
 
 
 class ProfileEditor(Vertical):
@@ -344,7 +346,7 @@ class ProfileEditor(Vertical):
     def on_blur(self, event: Blur) -> None:
         """Handle blur events for SSH fields."""
         # Check multiple possible attributes for the widget that lost focus
-        widget = getattr(event, 'widget', None)
+        widget = getattr(event, "widget", None)
         if widget is self:
             # Event bubbled up - check if we can find the original sender
             # In Textual, when Blur bubbles, we need to check the focused history
@@ -354,7 +356,7 @@ class ProfileEditor(Vertical):
 
     def on_descendant_blur(self, event: Blur) -> None:
         """Handle blur events from descendant widgets."""
-        widget = getattr(event, 'widget', None)
+        widget = getattr(event, "widget", None)
         if isinstance(widget, Input) and widget.id in _SSH_FIELD_IDS:
             self._sync_profile_from_inputs()
 
