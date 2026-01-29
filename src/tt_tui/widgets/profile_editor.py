@@ -165,26 +165,7 @@ class ProfileEditor(Vertical):
                 yield Checkbox("Enable SSH tunnel", id="ssh-enabled")
             with Vertical(classes="field-group", id="ssh-fields"):
                 yield Label("SSH Host", classes="field-label")
-                yield Input(placeholder="hostname or IP", id="ssh-host-input")
-
-                with Horizontal(classes="port-row"):
-                    with Vertical():
-                        yield Label("SSH Port", classes="field-label")
-                        yield Input(placeholder="22", id="ssh-port-input")
-                    with Vertical():
-                        yield Label("Local Port", classes="field-label")
-                        yield Input(placeholder="auto", id="ssh-local-port-input")
-
-                yield Label("SSH Username", classes="field-label")
-                yield Input(placeholder="username", id="ssh-username-input")
-
-                yield Label("SSH Password", classes="field-label")
-                yield Input(
-                    placeholder="(optional if using key)", password=True, id="ssh-password-input"
-                )
-
-                yield Label("Identity File", classes="field-label")
-                yield Input(placeholder="~/.ssh/id_rsa (optional)", id="ssh-identity-input")
+                yield Input(placeholder="hostname or ~/.ssh/config name", id="ssh-host-input")
 
                 with Horizontal(classes="port-row"):
                     with Vertical():
@@ -193,6 +174,25 @@ class ProfileEditor(Vertical):
                     with Vertical():
                         yield Label("Remote Port", classes="field-label")
                         yield Input(placeholder="8080", id="ssh-remote-port-input")
+
+                yield Label("Identity File", classes="field-label")
+                yield Input(placeholder="(uses ssh config)", id="ssh-identity-input")
+
+                yield Label("SSH Password", classes="field-label")
+                yield Input(
+                    placeholder="(uses ssh-agent)", password=True, id="ssh-password-input"
+                )
+
+                with Horizontal(classes="port-row"):
+                    with Vertical():
+                        yield Label("SSH Port", classes="field-label")
+                        yield Input(placeholder="(ssh config)", id="ssh-port-input")
+                    with Vertical():
+                        yield Label("SSH Username", classes="field-label")
+                        yield Input(placeholder="(ssh config)", id="ssh-username-input")
+
+                yield Label("Local Port", classes="field-label")
+                yield Input(placeholder="auto", id="ssh-local-port-input")
 
             with Vertical(classes="tunnel-status"):
                 yield Static("", id="tunnel-status-display", classes="tunnel-closed")

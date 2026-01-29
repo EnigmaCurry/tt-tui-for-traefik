@@ -75,9 +75,6 @@ class SSHTunnelManager:
             if not config.host:
                 return TunnelStatus.ERROR, None, "SSH host is required"
 
-            if not config.username:
-                return TunnelStatus.ERROR, None, "SSH username is required"
-
             # Check if we can reuse the existing tunnel
             if (
                 profile_name in self._tunnels
@@ -92,13 +89,20 @@ class SSHTunnelManager:
             await self._close_tunnel_internal(profile_name)
 
             try:
-                # Determine authentication method
+                # Build connection kwargs - only include values if explicitly set
+                # This allows asyncssh to read from ~/.ssh/config for unspecified values
                 connect_kwargs: dict = {
                     "host": config.host,
-                    "port": config.port,
-                    "username": config.username,
                     "known_hosts": None,  # Accept any host key
                 }
+
+                # Only specify port if not using default (lets SSH config take precedence)
+                if config.port and config.port != 22:
+                    connect_kwargs["port"] = config.port
+
+                # Only specify username if explicitly provided
+                if config.username:
+                    connect_kwargs["username"] = config.username
 
                 # Prefer identity file if provided
                 if config.identity_file:
