@@ -2162,32 +2162,11 @@ def main() -> None:
         type=str,
         help="HTTP basic auth password (requires --url)",
     )
-    # SSH tunnel arguments
+    # SSH tunnel arguments (username, port, key read from ~/.ssh/config)
     parser.add_argument(
         "--ssh-host",
         type=str,
-        help="SSH server hostname for tunnel (requires --url)",
-    )
-    parser.add_argument(
-        "--ssh-port",
-        type=int,
-        default=22,
-        help="SSH server port (default: 22)",
-    )
-    parser.add_argument(
-        "--ssh-user",
-        type=str,
-        help="SSH username for tunnel",
-    )
-    parser.add_argument(
-        "--ssh-password",
-        type=str,
-        help="SSH password for tunnel (alternative to --ssh-key)",
-    )
-    parser.add_argument(
-        "--ssh-key",
-        type=str,
-        help="Path to SSH private key file",
+        help="SSH host from ~/.ssh/config for tunnel (requires --url)",
     )
     parser.add_argument(
         "--ssh-remote-host",
@@ -2208,8 +2187,7 @@ def main() -> None:
         parser.error("--username and --password require --url")
 
     # Validate SSH args require --url
-    ssh_args = [args.ssh_host, args.ssh_user, args.ssh_password, args.ssh_key]
-    if any(ssh_args) and not args.url:
+    if args.ssh_host and not args.url:
         parser.error("SSH tunnel options require --url")
 
     deep_link = None
@@ -2226,10 +2204,6 @@ def main() -> None:
         ssh_tunnel = SSHTunnel(
             enabled=True,
             host=args.ssh_host,
-            port=args.ssh_port,
-            username=args.ssh_user or "",
-            password=args.ssh_password or "",
-            identity_file=args.ssh_key or "",
             remote_host=args.ssh_remote_host,
             remote_port=args.ssh_remote_port,
         )

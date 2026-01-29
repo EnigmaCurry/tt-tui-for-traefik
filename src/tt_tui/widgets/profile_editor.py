@@ -163,7 +163,7 @@ class ProfileEditor(Vertical):
                 yield Checkbox("Enable SSH tunnel", id="ssh-enabled")
             with Vertical(classes="field-group", id="ssh-fields"):
                 yield Label("SSH Host", classes="field-label")
-                yield Input(placeholder="hostname or ~/.ssh/config name", id="ssh-host-input")
+                yield Input(placeholder="~/.ssh/config Host name", id="ssh-host-input")
 
                 with Horizontal(classes="port-row"):
                     with Vertical():
@@ -172,22 +172,6 @@ class ProfileEditor(Vertical):
                     with Vertical():
                         yield Label("Remote Port", classes="field-label")
                         yield Input(placeholder="8080", id="ssh-remote-port-input")
-
-                yield Label("Identity File", classes="field-label")
-                yield Input(placeholder="(uses ssh config)", id="ssh-identity-input")
-
-                yield Label("SSH Password", classes="field-label")
-                yield Input(
-                    placeholder="(uses ssh-agent)", password=True, id="ssh-password-input"
-                )
-
-                with Horizontal(classes="port-row"):
-                    with Vertical():
-                        yield Label("SSH Port", classes="field-label")
-                        yield Input(placeholder="(ssh config)", id="ssh-port-input")
-                    with Vertical():
-                        yield Label("SSH Username", classes="field-label")
-                        yield Input(placeholder="(ssh config)", id="ssh-username-input")
 
                 yield Label("Local Port", classes="field-label")
                 yield Input(placeholder="auto", id="ssh-local-port-input")
@@ -215,11 +199,7 @@ class ProfileEditor(Vertical):
         # SSH tunnel fields
         ssh_enabled = self.query_one("#ssh-enabled", Checkbox)
         ssh_host = self.query_one("#ssh-host-input", Input)
-        ssh_port = self.query_one("#ssh-port-input", Input)
         ssh_local_port = self.query_one("#ssh-local-port-input", Input)
-        ssh_username = self.query_one("#ssh-username-input", Input)
-        ssh_password = self.query_one("#ssh-password-input", Input)
-        ssh_identity = self.query_one("#ssh-identity-input", Input)
         ssh_remote_host = self.query_one("#ssh-remote-host-input", Input)
         ssh_remote_port = self.query_one("#ssh-remote-port-input", Input)
 
@@ -236,14 +216,10 @@ class ProfileEditor(Vertical):
             ssh_enabled.value = tunnel.enabled if tunnel else False
             ssh_enabled.disabled = False
             ssh_host.value = tunnel.host if tunnel else ""
-            ssh_port.value = str(tunnel.port) if tunnel and tunnel.port != 22 else ""
             if tunnel and tunnel.local_port > 0:
                 ssh_local_port.value = str(tunnel.local_port)
             else:
                 ssh_local_port.value = ""
-            ssh_username.value = tunnel.username if tunnel else ""
-            ssh_password.value = tunnel.password if tunnel else ""
-            ssh_identity.value = tunnel.identity_file if tunnel else ""
             if tunnel and tunnel.remote_host != "localhost":
                 ssh_remote_host.value = tunnel.remote_host
             else:
@@ -267,11 +243,7 @@ class ProfileEditor(Vertical):
             ssh_enabled.value = False
             ssh_enabled.disabled = True
             ssh_host.value = ""
-            ssh_port.value = ""
             ssh_local_port.value = ""
-            ssh_username.value = ""
-            ssh_password.value = ""
-            ssh_identity.value = ""
             ssh_remote_host.value = ""
             ssh_remote_port.value = ""
             self._update_ssh_fields_state(False)
@@ -399,22 +371,13 @@ class ProfileEditor(Vertical):
         # SSH tunnel fields
         ssh_enabled = self.query_one("#ssh-enabled", Checkbox)
         ssh_host = self.query_one("#ssh-host-input", Input)
-        ssh_port = self.query_one("#ssh-port-input", Input)
         ssh_local_port = self.query_one("#ssh-local-port-input", Input)
-        ssh_username = self.query_one("#ssh-username-input", Input)
-        ssh_password = self.query_one("#ssh-password-input", Input)
-        ssh_identity = self.query_one("#ssh-identity-input", Input)
         ssh_remote_host = self.query_one("#ssh-remote-host-input", Input)
         ssh_remote_port = self.query_one("#ssh-remote-port-input", Input)
 
         from ..models import SSHTunnel
 
         # Parse port values with defaults
-        try:
-            port = int(ssh_port.value) if ssh_port.value.strip() else 22
-        except ValueError:
-            port = 22
-
         try:
             local_port = int(ssh_local_port.value) if ssh_local_port.value.strip() else 0
         except ValueError:
@@ -428,10 +391,6 @@ class ProfileEditor(Vertical):
         self._profile.ssh_tunnel = SSHTunnel(
             enabled=ssh_enabled.value,
             host=ssh_host.value.strip(),
-            port=port,
-            username=ssh_username.value.strip(),
-            identity_file=ssh_identity.value.strip(),
-            password=ssh_password.value,
             remote_host=ssh_remote_host.value.strip() or "localhost",
             remote_port=remote_port,
             local_port=local_port,

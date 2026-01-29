@@ -130,10 +130,6 @@ class SSHTunnelManager:
         old = self._configs[profile_name]
         return (
             old.host != config.host
-            or old.port != config.port
-            or old.username != config.username
-            or old.identity_file != config.identity_file
-            or old.password != config.password
             or old.remote_host != config.remote_host
             or old.remote_port != config.remote_port
             or (config.local_port > 0 and old.local_port != config.local_port)
@@ -181,7 +177,6 @@ class SSHTunnelManager:
                 _debug(f"DEBUG: SSH config path: {ssh_config_path}")
                 _debug(f"DEBUG: Looking for host: {config.host}")
                 _debug(f"DEBUG: Parsed ssh_settings: {ssh_settings}")
-                _debug(f"DEBUG: config.username from app: '{config.username}'")
 
                 # Determine the actual hostname (from SSH config or use the host directly)
                 actual_host = ssh_settings.get("hostname", config.host)
@@ -191,41 +186,25 @@ class SSHTunnelManager:
                     "known_hosts": None,  # Accept any host key
                 }
 
-                # Get username: explicit config > SSH config > let asyncssh default
-                if config.username:
-                    connect_kwargs["username"] = config.username
-                    _debug(f"DEBUG: Using username from app config: '{config.username}'")
-                elif "user" in ssh_settings:
+                # Get username from SSH config
+                if "user" in ssh_settings:
                     connect_kwargs["username"] = ssh_settings["user"]
                     _debug(f"DEBUG: Using username from SSH config: '{ssh_settings['user']}'")
                 else:
-                    _debug("DEBUG: No username specified, letting asyncssh default")
+                    _debug("DEBUG: No username in SSH config, letting asyncssh default")
 
-                # Get port: explicit config > SSH config > default
-                if config.port and config.port != 22:
-                    connect_kwargs["port"] = config.port
-                elif "port" in ssh_settings:
+                # Get port from SSH config
+                if "port" in ssh_settings:
                     try:
                         connect_kwargs["port"] = int(ssh_settings["port"])
                     except ValueError:
                         pass
 
-                # Get identity file: explicit config > SSH config
-                if config.identity_file:
-                    key_path = Path(config.identity_file).expanduser()
-                    if not key_path.exists():
-                        return (
-                            TunnelStatus.ERROR,
-                            None,
-                            f"Key file not found: {config.identity_file}",
-                        )
-                    connect_kwargs["client_keys"] = [str(key_path)]
-                elif "identityfile" in ssh_settings:
+                # Get identity file from SSH config
+                if "identityfile" in ssh_settings:
                     key_path = Path(ssh_settings["identityfile"]).expanduser()
                     if key_path.exists():
                         connect_kwargs["client_keys"] = [str(key_path)]
-                elif config.password:
-                    connect_kwargs["password"] = config.password
 
                 # DEBUG: Print final connect kwargs (hide password)
                 debug_kwargs = {k: v for k, v in connect_kwargs.items() if k != "password"}

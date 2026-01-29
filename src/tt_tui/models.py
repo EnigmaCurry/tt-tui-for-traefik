@@ -26,14 +26,14 @@ class BasicAuth(BaseModel):
 
 
 class SSHTunnel(BaseModel):
-    """SSH tunnel configuration for connecting to remote Traefik instances."""
+    """SSH tunnel configuration for connecting to remote Traefik instances.
+
+    Settings like username, port, and identity_file are read from ~/.ssh/config
+    based on the host entry.
+    """
 
     enabled: bool = False
-    host: str = ""  # SSH server hostname
-    port: int = 22  # SSH server port
-    username: str = ""  # SSH username
-    identity_file: str = ""  # Path to private key file (optional)
-    password: str = ""  # SSH password (alternative to key)
+    host: str = ""  # SSH server hostname or ~/.ssh/config Host entry
     remote_host: str = "localhost"  # Traefik host on the remote server
     remote_port: int = 8080  # Traefik port on the remote server
     local_port: int = 0  # Local port to forward (0 = auto-select)
