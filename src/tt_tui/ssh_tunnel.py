@@ -90,10 +90,11 @@ class SSHTunnelManager:
 
             try:
                 # Build connection kwargs - only include values if explicitly set
-                # This allows asyncssh to read from ~/.ssh/config for unspecified values
+                # Use config=True to read from ~/.ssh/config for host aliases, user, port, etc.
                 connect_kwargs: dict = {
                     "host": config.host,
                     "known_hosts": None,  # Accept any host key
+                    "config": True,  # Read ~/.ssh/config for host settings
                 }
 
                 # Only specify port if not using default (lets SSH config take precedence)
