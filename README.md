@@ -116,12 +116,11 @@ Additional SSH options:
 | `--ssh-remote-host` | `localhost` | Traefik host as seen from the SSH server |
 | `--ssh-remote-port` | `8080`      | Traefik port as seen from the SSH server |
 
-Example connecting to Traefik running on a different host accessible
-from the SSH server:
+Example connecting to Traefik on a non-default port:
 
 ```
-tt --url http://traefik.internal:8080 --ssh-host myserver \
-   --ssh-remote-host traefik.internal --ssh-remote-port 8080
+tt --url http://localhost:9090 --ssh-host myserver \
+   --ssh-remote-host localhost --ssh-remote-port 9090
 ```
 
 #### Manual Setup via Settings Tab
