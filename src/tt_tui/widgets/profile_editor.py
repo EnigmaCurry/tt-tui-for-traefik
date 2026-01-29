@@ -166,57 +166,66 @@ class ProfileEditor(Vertical):
     def set_profile(
         self, name: str | None, profile: Profile | None, runtime: ProfileRuntime | None = None
     ) -> None:
-        """Set the profile to edit."""
+        """Set the profile to edit.
+
+        Only updates input fields when switching to a different profile.
+        Use set_runtime() to update just the status display.
+        """
+        # Check if we're switching to a different profile
+        switching_profile = name != self._profile_name
+
         self._profile_name = name
         self._profile = profile
         self._runtime = runtime or ProfileRuntime()
 
-        url_input = self.query_one("#url-input", Input)
-        username_input = self.query_one("#username-input", Input)
-        password_input = self.query_one("#password-input", Input)
-
-        # SSH tunnel fields
-        ssh_enabled = self.query_one("#ssh-enabled", Checkbox)
-        ssh_host = self.query_one("#ssh-host-input", Input)
-        ssh_local_port = self.query_one("#ssh-local-port-input", Input)
-        ssh_remote_host = self.query_one("#ssh-remote-host-input", Input)
-        ssh_remote_port = self.query_one("#ssh-remote-port-input", Input)
-
-        if profile:
-            url_input.value = profile.url
-            url_input.disabled = False
-            username_input.value = profile.basic_auth.username if profile.basic_auth else ""
-            username_input.disabled = False
-            password_input.value = profile.basic_auth.password if profile.basic_auth else ""
-            password_input.disabled = False
+        # Only update input fields when switching profiles
+        if switching_profile:
+            url_input = self.query_one("#url-input", Input)
+            username_input = self.query_one("#username-input", Input)
+            password_input = self.query_one("#password-input", Input)
 
             # SSH tunnel fields
-            tunnel = profile.ssh_tunnel
-            ssh_enabled.value = tunnel.enabled if tunnel else False
-            ssh_enabled.disabled = False
-            ssh_host.value = tunnel.host if tunnel else ""
-            ssh_local_port.value = str(tunnel.local_port) if tunnel and tunnel.local_port > 0 else ""
-            ssh_remote_host.value = tunnel.remote_host if tunnel else "localhost"
-            ssh_remote_port.value = str(tunnel.remote_port) if tunnel else "8080"
+            ssh_enabled = self.query_one("#ssh-enabled", Checkbox)
+            ssh_host = self.query_one("#ssh-host-input", Input)
+            ssh_local_port = self.query_one("#ssh-local-port-input", Input)
+            ssh_remote_host = self.query_one("#ssh-remote-host-input", Input)
+            ssh_remote_port = self.query_one("#ssh-remote-port-input", Input)
 
-            # Enable/disable SSH fields based on checkbox
-            self._update_ssh_fields_state(ssh_enabled.value)
-        else:
-            url_input.value = ""
-            url_input.disabled = True
-            username_input.value = ""
-            username_input.disabled = True
-            password_input.value = ""
-            password_input.disabled = True
+            if profile:
+                url_input.value = profile.url
+                url_input.disabled = False
+                username_input.value = profile.basic_auth.username if profile.basic_auth else ""
+                username_input.disabled = False
+                password_input.value = profile.basic_auth.password if profile.basic_auth else ""
+                password_input.disabled = False
 
-            # Disable SSH fields
-            ssh_enabled.value = False
-            ssh_enabled.disabled = True
-            ssh_host.value = ""
-            ssh_local_port.value = ""
-            ssh_remote_host.value = ""
-            ssh_remote_port.value = ""
-            self._update_ssh_fields_state(False)
+                # SSH tunnel fields
+                tunnel = profile.ssh_tunnel
+                ssh_enabled.value = tunnel.enabled if tunnel else False
+                ssh_enabled.disabled = False
+                ssh_host.value = tunnel.host if tunnel else ""
+                ssh_local_port.value = str(tunnel.local_port) if tunnel and tunnel.local_port > 0 else ""
+                ssh_remote_host.value = tunnel.remote_host if tunnel else "localhost"
+                ssh_remote_port.value = str(tunnel.remote_port) if tunnel else "8080"
+
+                # Enable/disable SSH fields based on checkbox
+                self._update_ssh_fields_state(ssh_enabled.value)
+            else:
+                url_input.value = ""
+                url_input.disabled = True
+                username_input.value = ""
+                username_input.disabled = True
+                password_input.value = ""
+                password_input.disabled = True
+
+                # Disable SSH fields
+                ssh_enabled.value = False
+                ssh_enabled.disabled = True
+                ssh_host.value = ""
+                ssh_local_port.value = ""
+                ssh_remote_host.value = ""
+                ssh_remote_port.value = ""
+                self._update_ssh_fields_state(False)
 
         self._update_status_display()
         self._update_tunnel_status_display()
