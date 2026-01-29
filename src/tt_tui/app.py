@@ -859,6 +859,11 @@ class TraefikTUI(App):
         # Call the parent notify
         super().notify(message, title=title, severity=severity, timeout=timeout)
 
+    def _clear_all_notifications(self) -> None:
+        """Clear all visible notifications."""
+        self._active_notifications.clear()
+        self.clear_notifications()
+
     def watch_theme(self, old_theme: str, new_theme: str) -> None:
         """Save theme preference when changed via command palette."""
         if new_theme != self.settings.theme:
@@ -1857,6 +1862,8 @@ class TraefikTUI(App):
 
         if runtime.status == ConnectionStatus.CONNECTED:
             self._set_api_status(ApiStatus.SUCCESS)
+            # Clear any error notifications on successful connection
+            self._clear_all_notifications()
         else:
             self._set_api_status(ApiStatus.ERROR)
             # Check for authentication failure (401/403)
