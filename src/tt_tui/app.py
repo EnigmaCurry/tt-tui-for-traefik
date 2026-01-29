@@ -1,6 +1,8 @@
 """Main TT TUI application."""
 
 import argparse
+
+from . import __version__
 from dataclasses import dataclass
 from enum import Enum
 
@@ -2135,6 +2137,12 @@ class TraefikTUI(App):
 def main() -> None:
     """Entry point for the application."""
     parser = argparse.ArgumentParser(description="`tt` is a console TUI dashboard for Traefik")
+    parser.add_argument(
+        "--version",
+        "-V",
+        action="version",
+        version=f"tt {__version__}",
+    )
     parser.add_argument(
         "--link",
         "-l",

@@ -4,6 +4,7 @@ from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.widgets import Label, Static
 
+from .. import __version__
 from ..api import TraefikOverview, TraefikVersion
 
 # Project URL
@@ -59,6 +60,8 @@ class InfoView(Vertical):
 
     def compose(self) -> ComposeResult:
         yield Static("", id="summary-bar")
+        yield Label("TT Version", classes="section-header")
+        yield Static(__version__, id="tt-version-content", classes="section-content")
         yield Label("Traefik Version", classes="section-header")
         yield Static("Loading...", id="version-content", classes="section-content")
         yield Label("Enabled Providers", classes="section-header")
