@@ -173,7 +173,12 @@ class TraefikHTTPError(TraefikAPIError):
 
 
 class TraefikAPI:
-    """Async client for the Traefik API."""
+    """Async client for the Traefik API.
+
+    Uses a persistent httpx.AsyncClient to reuse HTTP connections across
+    requests, which is critical for SSH tunnel performance (each new TCP
+    connection spawns a new ssh+nc process).
+    """
 
     def __init__(
         self,
@@ -186,15 +191,28 @@ class TraefikAPI:
         self._auth = None
         if basic_auth and basic_auth.username:
             self._auth = httpx.BasicAuth(basic_auth.username, basic_auth.password)
+        self._client: httpx.AsyncClient | None = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        """Get or create the persistent HTTP client."""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=self.timeout)
+        return self._client
+
+    async def close(self) -> None:
+        """Close the underlying HTTP client."""
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+            self._client = None
 
     async def _request(self, method: str, path: str) -> dict | list:
         """Make an API request."""
         url = f"{self.base_url}{path}"
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.request(method, url, auth=self._auth)
-                response.raise_for_status()
-                return response.json()
+            client = self._get_client()
+            response = await client.request(method, url, auth=self._auth)
+            response.raise_for_status()
+            return response.json()
         except httpx.TimeoutException as e:
             raise TraefikTimeoutError("Connection timed out") from e
         except httpx.ConnectError as e:
