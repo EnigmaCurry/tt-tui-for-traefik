@@ -1,7 +1,9 @@
 """SSH tunnel management for remote Traefik connections.
 
-Uses the system ssh command via subprocess to ensure full compatibility
-with SSH config (Include, Match, ProxyCommand, CertificateFile, etc.).
+Uses the system ssh command to run `nc` on the remote host, proxying TCP
+connections through SSH command execution. This works even when the SSH
+server has AllowTcpForwarding disabled, since it only requires command
+execution (not port forwarding).
 """
 
 import asyncio
@@ -16,11 +18,77 @@ class SSHTunnelError(Exception):
     pass
 
 
+async def _pipe(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    """Copy data from reader to writer until EOF."""
+    try:
+        while True:
+            data = await reader.read(65536)
+            if not data:
+                break
+            writer.write(data)
+            await writer.drain()
+    except (ConnectionResetError, BrokenPipeError, OSError):
+        pass
+    finally:
+        try:
+            writer.close()
+            await writer.wait_closed()
+        except (OSError, ConnectionResetError):
+            pass
+
+
+async def _handle_client(
+    client_reader: asyncio.StreamReader,
+    client_writer: asyncio.StreamWriter,
+    ssh_host: str,
+    remote_host: str,
+    remote_port: int,
+) -> None:
+    """Handle a single client connection by proxying through ssh + nc."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "ssh", ssh_host, "nc", remote_host, str(remote_port),
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+
+        if not proc.stdin or not proc.stdout:
+            client_writer.close()
+            await client_writer.wait_closed()
+            return
+
+        # Bidirectional pipe: client <-> ssh nc
+        await asyncio.gather(
+            _pipe(client_reader, proc.stdin),
+            _pipe(proc.stdout, client_writer),
+        )
+
+        # Clean up the ssh process
+        if proc.returncode is None:
+            proc.terminate()
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=2.0)
+            except asyncio.TimeoutError:
+                proc.kill()
+
+    except Exception:
+        try:
+            client_writer.close()
+            await client_writer.wait_closed()
+        except (OSError, ConnectionResetError):
+            pass
+
+
 class SSHTunnelManager:
-    """Manages SSH tunnel connections for profiles using the system ssh command."""
+    """Manages SSH tunnel connections for profiles.
+
+    Creates a local TCP server that proxies each connection through
+    `ssh <host> nc <remote_host> <remote_port>`.
+    """
 
     def __init__(self) -> None:
-        self._processes: dict[str, asyncio.subprocess.Process] = {}
+        self._servers: dict[str, asyncio.Server] = {}
         self._local_ports: dict[str, int] = {}
         self._configs: dict[str, SSHTunnel] = {}
         self._lock = asyncio.Lock()
@@ -32,11 +100,10 @@ class SSHTunnelManager:
             return s.getsockname()[1]
 
     def _is_connection_alive(self, profile_name: str) -> bool:
-        """Check if an existing SSH process is still running."""
-        if profile_name not in self._processes:
+        """Check if the local proxy server is still running."""
+        if profile_name not in self._servers:
             return False
-        proc = self._processes[profile_name]
-        return proc.returncode is None
+        return self._servers[profile_name].is_serving()
 
     def _config_changed(self, profile_name: str, config: SSHTunnel) -> bool:
         """Check if the tunnel configuration has changed."""
@@ -50,25 +117,10 @@ class SSHTunnelManager:
             or (config.local_port > 0 and old.local_port != config.local_port)
         )
 
-    async def _wait_for_port(self, port: int, timeout: float = 10.0) -> bool:
-        """Wait for a local port to become connectable."""
-        deadline = asyncio.get_event_loop().time() + timeout
-        while asyncio.get_event_loop().time() < deadline:
-            try:
-                _, writer = await asyncio.wait_for(
-                    asyncio.open_connection("127.0.0.1", port), timeout=1.0
-                )
-                writer.close()
-                await writer.wait_closed()
-                return True
-            except (ConnectionRefusedError, OSError, asyncio.TimeoutError):
-                await asyncio.sleep(0.1)
-        return False
-
     async def open_tunnel(
         self, profile_name: str, config: SSHTunnel
     ) -> tuple[TunnelStatus, int | None, str | None]:
-        """Open an SSH tunnel for a profile, reusing existing connection if available."""
+        """Open an SSH tunnel for a profile, reusing existing if available."""
         async with self._lock:
             if not config.enabled:
                 await self._close_tunnel_internal(profile_name)
@@ -79,7 +131,7 @@ class SSHTunnelManager:
 
             # Check if we can reuse the existing tunnel
             if (
-                profile_name in self._processes
+                profile_name in self._servers
                 and self._is_connection_alive(profile_name)
                 and not self._config_changed(profile_name, config)
             ):
@@ -92,52 +144,47 @@ class SSHTunnelManager:
             try:
                 local_port = config.local_port if config.local_port > 0 else self._find_free_port()
 
-                # Build ssh command: ssh -N -L local:remote_host:remote_port host
-                cmd = [
-                    "ssh",
-                    "-N",  # No remote command
-                    "-o", "ExitOnForwardFailure=yes",
-                    "-o", "ServerAliveInterval=15",
-                    "-o", "ServerAliveCountMax=3",
-                    "-o", "ControlMaster=no",
-                    "-o", "ControlPath=none",
-                    "-L", f"127.0.0.1:{local_port}:{config.remote_host}:{config.remote_port}",
-                    config.host,
-                ]
-
-                proc = await asyncio.create_subprocess_exec(
-                    *cmd,
+                # Verify ssh + nc connectivity with a quick test
+                test_proc = await asyncio.create_subprocess_exec(
+                    "ssh", config.host, "nc", "-z", config.remote_host, str(config.remote_port),
                     stdin=asyncio.subprocess.DEVNULL,
                     stdout=asyncio.subprocess.DEVNULL,
                     stderr=asyncio.subprocess.PIPE,
                 )
+                try:
+                    stderr_bytes = b""
+                    if test_proc.stderr:
+                        stderr_bytes = await asyncio.wait_for(
+                            test_proc.stderr.read(), timeout=15.0
+                        )
+                    await asyncio.wait_for(test_proc.wait(), timeout=15.0)
+                except asyncio.TimeoutError:
+                    test_proc.kill()
+                    return TunnelStatus.ERROR, None, "SSH connection timed out"
 
-                # Wait for the tunnel port to become available
-                port_ready = await self._wait_for_port(local_port, timeout=15.0)
-
-                if not port_ready:
-                    # Collect stderr for diagnostics
-                    stderr_text = ""
-                    if proc.stderr:
-                        try:
-                            stderr_bytes = await asyncio.wait_for(
-                                proc.stderr.read(), timeout=2.0
-                            )
-                            stderr_text = stderr_bytes.decode().strip()
-                        except asyncio.TimeoutError:
-                            pass
-
-                    # Check if process died
-                    if proc.returncode is not None:
-                        error_msg = stderr_text or f"SSH exited with code {proc.returncode}"
-                        return TunnelStatus.ERROR, None, error_msg
-                    # Process running but port not ready - kill it
-                    proc.terminate()
-                    await proc.wait()
-                    error_msg = stderr_text or "Tunnel port did not become ready"
+                if test_proc.returncode != 0:
+                    stderr_text = stderr_bytes.decode().strip()
+                    error_msg = (
+                        stderr_text
+                        or f"Cannot reach {config.remote_host}:{config.remote_port} via {config.host}"
+                    )
                     return TunnelStatus.ERROR, None, error_msg
 
-                self._processes[profile_name] = proc
+                # Start local TCP proxy server
+                ssh_host = config.host
+                remote_host = config.remote_host
+                remote_port = config.remote_port
+
+                async def client_handler(
+                    reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+                ) -> None:
+                    await _handle_client(reader, writer, ssh_host, remote_host, remote_port)
+
+                server = await asyncio.start_server(
+                    client_handler, "127.0.0.1", local_port
+                )
+
+                self._servers[profile_name] = server
                 self._local_ports[profile_name] = local_port
                 self._configs[profile_name] = config
 
@@ -146,20 +193,15 @@ class SSHTunnelManager:
             except FileNotFoundError:
                 return TunnelStatus.ERROR, None, "ssh command not found"
             except Exception as e:
-                return TunnelStatus.ERROR, None, str(e)
+                return TunnelStatus.ERROR, None, str(e) or repr(e)
 
     async def _close_tunnel_internal(self, profile_name: str) -> None:
         """Close tunnel without acquiring lock (internal use only)."""
-        if profile_name in self._processes:
-            proc = self._processes[profile_name]
-            if proc.returncode is None:
-                proc.terminate()
-                try:
-                    await asyncio.wait_for(proc.wait(), timeout=5.0)
-                except asyncio.TimeoutError:
-                    proc.kill()
-                    await proc.wait()
-            del self._processes[profile_name]
+        if profile_name in self._servers:
+            server = self._servers[profile_name]
+            server.close()
+            await server.wait_closed()
+            del self._servers[profile_name]
 
         if profile_name in self._local_ports:
             del self._local_ports[profile_name]
@@ -175,7 +217,7 @@ class SSHTunnelManager:
     async def close_all(self) -> None:
         """Close all SSH tunnels."""
         async with self._lock:
-            for profile_name in list(self._processes.keys()):
+            for profile_name in list(self._servers.keys()):
                 await self._close_tunnel_internal(profile_name)
 
     def get_local_port(self, profile_name: str) -> int | None:
@@ -184,7 +226,7 @@ class SSHTunnelManager:
 
     def is_tunnel_open(self, profile_name: str) -> bool:
         """Check if a tunnel is open for a profile."""
-        return profile_name in self._processes and self._is_connection_alive(profile_name)
+        return profile_name in self._servers and self._is_connection_alive(profile_name)
 
     def get_effective_url(
         self, profile_name: str, original_url: str, config: SSHTunnel | None
