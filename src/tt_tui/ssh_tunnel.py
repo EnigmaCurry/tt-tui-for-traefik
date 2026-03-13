@@ -114,17 +114,26 @@ class SSHTunnelManager:
                 port_ready = await self._wait_for_port(local_port, timeout=15.0)
 
                 if not port_ready:
+                    # Collect stderr for diagnostics
+                    stderr_text = ""
+                    if proc.stderr:
+                        try:
+                            stderr_bytes = await asyncio.wait_for(
+                                proc.stderr.read(), timeout=2.0
+                            )
+                            stderr_text = stderr_bytes.decode().strip()
+                        except asyncio.TimeoutError:
+                            pass
+
                     # Check if process died
                     if proc.returncode is not None:
-                        stderr = b""
-                        if proc.stderr:
-                            stderr = await proc.stderr.read()
-                        error_msg = stderr.decode().strip() if stderr else "SSH process exited"
+                        error_msg = stderr_text or f"SSH exited with code {proc.returncode}"
                         return TunnelStatus.ERROR, None, error_msg
                     # Process running but port not ready - kill it
                     proc.terminate()
                     await proc.wait()
-                    return TunnelStatus.ERROR, None, "Tunnel port did not become ready"
+                    error_msg = stderr_text or "Tunnel port did not become ready"
+                    return TunnelStatus.ERROR, None, error_msg
 
                 self._processes[profile_name] = proc
                 self._local_ports[profile_name] = local_port
