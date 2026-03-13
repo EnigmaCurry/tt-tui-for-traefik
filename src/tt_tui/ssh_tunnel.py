@@ -99,6 +99,8 @@ class SSHTunnelManager:
                     "-o", "ExitOnForwardFailure=yes",
                     "-o", "ServerAliveInterval=15",
                     "-o", "ServerAliveCountMax=3",
+                    "-o", "ControlMaster=no",
+                    "-o", "ControlPath=none",
                     "-L", f"127.0.0.1:{local_port}:{config.remote_host}:{config.remote_port}",
                     config.host,
                 ]
