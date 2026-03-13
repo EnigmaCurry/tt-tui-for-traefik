@@ -1,9 +1,9 @@
 """SSH tunnel management for remote Traefik connections.
 
-Uses the system ssh command to run `nc` on the remote host, proxying TCP
-connections through SSH command execution. This works even when the SSH
-server has AllowTcpForwarding disabled, since it only requires command
-execution (not port forwarding).
+Uses the system ssh command with stdio proxying to forward TCP connections.
+A local TCP server accepts connections and pipes each one through
+`ssh -W remote_host:remote_port host`, which uses SSH's built-in stdio
+forwarding — no remote tools (nc, socat) required.
 """
 
 import asyncio
@@ -44,10 +44,10 @@ async def _handle_client(
     remote_host: str,
     remote_port: int,
 ) -> None:
-    """Handle a single client connection by proxying through ssh + nc."""
+    """Handle a single client connection by proxying through ssh -W."""
     try:
         proc = await asyncio.create_subprocess_exec(
-            "ssh", ssh_host, "nc", remote_host, str(remote_port),
+            "ssh", "-W", f"{remote_host}:{remote_port}", ssh_host,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
@@ -58,7 +58,7 @@ async def _handle_client(
             await client_writer.wait_closed()
             return
 
-        # Bidirectional pipe: client <-> ssh nc
+        # Bidirectional pipe: client <-> ssh -W
         await asyncio.gather(
             _pipe(client_reader, proc.stdin),
             _pipe(proc.stdout, client_writer),
@@ -84,7 +84,7 @@ class SSHTunnelManager:
     """Manages SSH tunnel connections for profiles.
 
     Creates a local TCP server that proxies each connection through
-    `ssh <host> nc <remote_host> <remote_port>`.
+    `ssh -W <remote_host>:<remote_port> <host>`.
     """
 
     def __init__(self) -> None:
@@ -144,31 +144,35 @@ class SSHTunnelManager:
             try:
                 local_port = config.local_port if config.local_port > 0 else self._find_free_port()
 
-                # Verify ssh + nc connectivity with a quick test
+                # Verify connectivity with a quick ssh -W test
                 test_proc = await asyncio.create_subprocess_exec(
-                    "ssh", config.host, "nc", "-z", config.remote_host, str(config.remote_port),
-                    stdin=asyncio.subprocess.DEVNULL,
-                    stdout=asyncio.subprocess.DEVNULL,
+                    "ssh", "-W", f"{config.remote_host}:{config.remote_port}", config.host,
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
                 try:
-                    stderr_bytes = b""
-                    if test_proc.stderr:
-                        stderr_bytes = await asyncio.wait_for(
-                            test_proc.stderr.read(), timeout=15.0
+                    # If ssh -W connects, it will stay open waiting for data.
+                    # We just need to check it doesn't exit immediately with an error.
+                    await asyncio.sleep(1.0)
+                    if test_proc.returncode is not None:
+                        stderr_bytes = b""
+                        if test_proc.stderr:
+                            stderr_bytes = await test_proc.stderr.read()
+                        stderr_text = stderr_bytes.decode().strip()
+                        error_msg = (
+                            stderr_text
+                            or f"Cannot reach {config.remote_host}:{config.remote_port}"
+                              f" via {config.host}"
                         )
-                    await asyncio.wait_for(test_proc.wait(), timeout=15.0)
-                except asyncio.TimeoutError:
-                    test_proc.kill()
-                    return TunnelStatus.ERROR, None, "SSH connection timed out"
-
-                if test_proc.returncode != 0:
-                    stderr_text = stderr_bytes.decode().strip()
-                    error_msg = (
-                        stderr_text
-                        or f"Cannot reach {config.remote_host}:{config.remote_port} via {config.host}"
-                    )
-                    return TunnelStatus.ERROR, None, error_msg
+                        return TunnelStatus.ERROR, None, error_msg
+                finally:
+                    if test_proc.returncode is None:
+                        test_proc.terminate()
+                        try:
+                            await asyncio.wait_for(test_proc.wait(), timeout=2.0)
+                        except asyncio.TimeoutError:
+                            test_proc.kill()
 
                 # Start local TCP proxy server
                 ssh_host = config.host
