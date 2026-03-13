@@ -198,14 +198,18 @@ class TraefikAPI:
         except httpx.TimeoutException as e:
             raise TraefikTimeoutError("Connection timed out") from e
         except httpx.ConnectError as e:
-            raise TraefikConnectionError("Unable to connect") from e
+            detail = str(e)
+            msg = f"Unable to connect: {detail}" if detail else "Unable to connect"
+            raise TraefikConnectionError(msg) from e
         except httpx.RemoteProtocolError as e:
-            raise TraefikConnectionError("Server disconnected") from e
+            detail = str(e)
+            msg = f"Server disconnected: {detail}" if detail else "Server disconnected"
+            raise TraefikConnectionError(msg) from e
         except httpx.HTTPStatusError as e:
             raise TraefikHTTPError(e.response.status_code, url=url) from e
         except httpx.RequestError as e:
-            # Catch any other httpx request errors
-            raise TraefikConnectionError(str(e)) from e
+            msg = str(e) or f"{type(e).__name__}: {e!r}"
+            raise TraefikConnectionError(msg) from e
 
     async def _get(self, path: str) -> dict | list:
         """Make a GET request."""
