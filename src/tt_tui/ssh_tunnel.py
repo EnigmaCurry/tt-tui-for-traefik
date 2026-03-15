@@ -61,7 +61,7 @@ class SSHTunnelManager:
                 writer.close()
                 await writer.wait_closed()
                 return True
-            except (ConnectionRefusedError, OSError, asyncio.TimeoutError):
+            except (TimeoutError, ConnectionRefusedError, OSError):
                 await asyncio.sleep(0.1)
         return False
 
@@ -121,7 +121,7 @@ class SSHTunnelManager:
                                 proc.stderr.read(), timeout=2.0
                             )
                             stderr_text = stderr_bytes.decode().strip()
-                        except asyncio.TimeoutError:
+                        except TimeoutError:
                             pass
 
                     if proc.returncode is not None:
@@ -151,7 +151,7 @@ class SSHTunnelManager:
                 proc.terminate()
                 try:
                     await asyncio.wait_for(proc.wait(), timeout=5.0)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     proc.kill()
                     await proc.wait()
             del self._processes[profile_name]
