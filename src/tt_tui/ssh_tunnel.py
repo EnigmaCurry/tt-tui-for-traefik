@@ -95,10 +95,14 @@ class SSHTunnelManager:
                 cmd = [
                     "ssh",
                     "-N",  # No remote command
-                    "-o", "ExitOnForwardFailure=yes",
-                    "-o", "ServerAliveInterval=15",
-                    "-o", "ServerAliveCountMax=3",
-                    "-L", f"127.0.0.1:{local_port}:{config.remote_host}:{config.remote_port}",
+                    "-o",
+                    "ExitOnForwardFailure=yes",
+                    "-o",
+                    "ServerAliveInterval=15",
+                    "-o",
+                    "ServerAliveCountMax=3",
+                    "-L",
+                    f"127.0.0.1:{local_port}:{config.remote_host}:{config.remote_port}",
                     config.host,
                 ]
 
@@ -117,9 +121,7 @@ class SSHTunnelManager:
                     stderr_text = ""
                     if proc.stderr:
                         try:
-                            stderr_bytes = await asyncio.wait_for(
-                                proc.stderr.read(), timeout=2.0
-                            )
+                            stderr_bytes = await asyncio.wait_for(proc.stderr.read(), timeout=2.0)
                             stderr_text = stderr_bytes.decode().strip()
                         except TimeoutError:
                             pass
