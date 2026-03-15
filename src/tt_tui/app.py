@@ -825,10 +825,21 @@ class TraefikTUI(App):
         self._error_threshold = 5
         self._deep_link = deep_link
         self._first_connection_checked = False
+        self._api_cache: dict[str, TraefikAPI] = {}  # Cached API clients by url+auth key
         self._active_notifications: set[str] = set()
         # Apply saved theme
         if self.settings.theme:
             self.theme = self.settings.theme
+
+    def _get_api(self, effective_url: str, basic_auth: BasicAuth | None) -> TraefikAPI:
+        """Get or create a cached TraefikAPI client for connection reuse."""
+        cache_key = f"{effective_url}|{basic_auth.username if basic_auth else ''}"
+        if cache_key not in self._api_cache:
+            self._api_cache = {cache_key: TraefikAPI(effective_url, basic_auth)}
+        elif list(self._api_cache.keys())[0] != cache_key:
+            # URL or auth changed, replace the cached client
+            self._api_cache = {cache_key: TraefikAPI(effective_url, basic_auth)}
+        return self._api_cache[cache_key]
 
     def notify(
         self,
@@ -1293,7 +1304,7 @@ class TraefikTUI(App):
             effective_url = await ensure_tunnel_and_get_url(
                 selected, profile.url, profile.ssh_tunnel
             )
-            api = TraefikAPI(effective_url, profile.basic_auth)
+            api = self._get_api(effective_url, profile.basic_auth)
             http_routers = await api.get_http_routers()
             tcp_routers = await api.get_tcp_routers()
             udp_routers = await api.get_udp_routers()
@@ -1356,7 +1367,7 @@ class TraefikTUI(App):
             effective_url = await ensure_tunnel_and_get_url(
                 selected, profile.url, profile.ssh_tunnel
             )
-            api = TraefikAPI(effective_url, profile.basic_auth)
+            api = self._get_api(effective_url, profile.basic_auth)
             if router_type == "tcp":
                 detail = await api.get_tcp_router(router_name)
             elif router_type == "udp":
@@ -1394,7 +1405,7 @@ class TraefikTUI(App):
             effective_url = await ensure_tunnel_and_get_url(
                 selected, profile.url, profile.ssh_tunnel
             )
-            api = TraefikAPI(effective_url, profile.basic_auth)
+            api = self._get_api(effective_url, profile.basic_auth)
             http_services = await api.get_http_services()
             tcp_services = await api.get_tcp_services()
             udp_services = await api.get_udp_services()
@@ -1457,7 +1468,7 @@ class TraefikTUI(App):
             effective_url = await ensure_tunnel_and_get_url(
                 selected, profile.url, profile.ssh_tunnel
             )
-            api = TraefikAPI(effective_url, profile.basic_auth)
+            api = self._get_api(effective_url, profile.basic_auth)
             if service_type == "tcp":
                 detail = await api.get_tcp_service(service_name)
             elif service_type == "udp":
@@ -1495,7 +1506,7 @@ class TraefikTUI(App):
             effective_url = await ensure_tunnel_and_get_url(
                 selected, profile.url, profile.ssh_tunnel
             )
-            api = TraefikAPI(effective_url, profile.basic_auth)
+            api = self._get_api(effective_url, profile.basic_auth)
             entrypoints = await api.get_entrypoints()
 
             # Fetch routers, services, middlewares to build usage stats per entrypoint
@@ -1641,7 +1652,7 @@ class TraefikTUI(App):
             effective_url = await ensure_tunnel_and_get_url(
                 selected, profile.url, profile.ssh_tunnel
             )
-            api = TraefikAPI(effective_url, profile.basic_auth)
+            api = self._get_api(effective_url, profile.basic_auth)
             detail = await api.get_entrypoint(entrypoint_name)
 
             entrypoints_view = self.query_one("#entrypoints-view", EntrypointsView)
@@ -1674,7 +1685,7 @@ class TraefikTUI(App):
             effective_url = await ensure_tunnel_and_get_url(
                 selected, profile.url, profile.ssh_tunnel
             )
-            api = TraefikAPI(effective_url, profile.basic_auth)
+            api = self._get_api(effective_url, profile.basic_auth)
             http_middlewares = await api.get_http_middlewares()
             tcp_middlewares = await api.get_tcp_middlewares()
 
@@ -1729,7 +1740,7 @@ class TraefikTUI(App):
             effective_url = await ensure_tunnel_and_get_url(
                 selected, profile.url, profile.ssh_tunnel
             )
-            api = TraefikAPI(effective_url, profile.basic_auth)
+            api = self._get_api(effective_url, profile.basic_auth)
             version = await api.get_version()
             overview = await api.get_overview()
 
@@ -1817,7 +1828,7 @@ class TraefikTUI(App):
             effective_url = await ensure_tunnel_and_get_url(
                 selected, profile.url, profile.ssh_tunnel
             )
-            api = TraefikAPI(effective_url, profile.basic_auth)
+            api = self._get_api(effective_url, profile.basic_auth)
             if middleware_type == "tcp":
                 detail = await api.get_tcp_middleware(middleware_name)
             else:
