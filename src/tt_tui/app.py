@@ -26,7 +26,7 @@ from textual.widgets import (
 
 from . import __version__
 from .api import Middleware, Service, TraefikAPI, TraefikAPIError
-from .models import ConnectionStatus, Profile, ProfileRuntime, Settings, SSHTunnel
+from .models import BasicAuth, ConnectionStatus, Profile, ProfileRuntime, Settings, SSHTunnel
 from .monitor import (
     check_connection,
     close_all_tunnels,
